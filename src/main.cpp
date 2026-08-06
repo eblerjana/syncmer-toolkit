@@ -21,6 +21,8 @@ void check_open_file(string filename, string filetype) {
 		ss << "Error: the file " << filename << " cannot be opened." << endl;
 		throw runtime_error(ss.str());
 	}
+	oneFileClose(ofK);
+	oneSchemaDestroy(schema);
 }
 
 int main(int argc, char* argv[]) {

@@ -25,13 +25,14 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 
 	if (!ipath) {
 		cerr << "Error: could not open 1path file." << endl;
+		oneSchemaDestroy(schema);
+		oneFileClose(ipath);
 		return 1;
 	}
 
 	// read the khash file to look up syncmer counts and  sequences
 	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngmap.c
 	SyncmerSet *sms = syncmerSetRead(khashfile_path.data());
-	Seqhash *sh = seqhashCreate(sms->params.k, sms->params.w+1, sms->params.seed);
 	int synLen = sms->params.w + sms->params.k;
 	// max syncmer ID
 	long long int nSyncmers = kmerHashMax (sms->kh);
@@ -54,6 +55,8 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 					if (new_source_id != source_id + 1) {
 						cout << source_id << " " << new_source_id << endl;
 						cerr << "Error: paths in input file are not ordered." << endl;
+						oneSchemaDestroy(schema);
+						oneFileClose(ipath);
 						return 1;
 					}
 					// source file changed, therefore reset set of seen elements
@@ -96,6 +99,8 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 	if (!outfile.good()) {
 		cerr << "Error: output file " << outfile_path << " cannot be created." << endl;
 		delete[] buf;
+		oneSchemaDestroy(schema);
+		oneFileClose(ipath);
 		return 1;
 	}
 
@@ -115,6 +120,7 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 	outfile.close();
 	delete[] buf;
 	syncmerSetDestroy(sms);
+	oneSchemaDestroy(schema);
 
 	cout << "Wrote syncmer statistics to " << outfile_path << endl;
 	cout << "Total syncmers:\t" << nSyncmers << endl;
