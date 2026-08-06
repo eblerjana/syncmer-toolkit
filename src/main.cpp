@@ -28,7 +28,7 @@ void check_open_file(string filename, string filetype) {
 int main(int argc, char* argv[]) {
 
 	// parse command line
-	string usage = "Usage: syncmer-toolkit <.1path file> <.1khash file> <outfile>";
+	string usage = "Usage: syncmer-toolkit <.1path file> <.1khash file> <outname>";
 
 	if (argc == 1) {
 		// no arguments provided, just print usage info
