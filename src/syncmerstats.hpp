@@ -3,6 +3,6 @@
 
 #include <string>
 
-int compute_syncmer_stats (std::string& filename_path);
+int compute_syncmer_stats (std::string& pathfile_path, std::string& khashfile_path, std::string& outfile_path);
 
 #endif // SYNCMER_STATS_HPP

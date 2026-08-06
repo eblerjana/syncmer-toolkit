@@ -3,10 +3,7 @@
 #include <sstream>
 #include <fstream>
 #include <stdexcept>
-
-extern "C" {
-#include "syng.h"
-}
+#include "syng_wrapper.hpp"
 
 #include "syncmerstats.hpp"
 
@@ -29,7 +26,7 @@ void check_open_file(string filename, string filetype) {
 int main(int argc, char* argv[]) {
 
 	// parse command line
-	string usage = "Usage: syncmer-toolkit <.1path file>";
+	string usage = "Usage: syncmer-toolkit <.1path file> <.1khash file> <outfile>";
 
 	if (argc == 1) {
 		// no arguments provided, just print usage info
@@ -37,23 +34,26 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 
-	if (argc < 2) {
+	if (argc < 4) {
 		cerr << usage << "\n" << endl;
 		cerr << "Error: Too few commandline arguments provided." << endl;
 		return 1;
 	}
 
-	if (argc > 2) {
+	if (argc > 4) {
 		cerr << usage << "\n" << endl;
 		cerr << "Error: Too many commandline arguments provided." << endl;
 		return 1;
 	}
 
-	string filename_path = argv[1];
+	string pathfile_path = argv[1];
+	string khashfile_path = argv[2];
+	string outfile_path = argv[3];
 
-	// make sure that files can be opened
+	// make sure that 1path file can be opened
 	try {
-		check_open_file(filename_path, "path");
+		check_open_file(pathfile_path, "path");
+		check_open_file(khashfile_path, "khash");
 	} catch (const runtime_error& e) {
 		cerr << e.what();
 		return 1;
@@ -61,10 +61,11 @@ int main(int argc, char* argv[]) {
 
 	cout << "Running program with the following files:" << endl;
 	cout << "-----------------------------------------" << endl;
-	cout << "1path file:\t" << filename_path << "\ņ" << endl;
+	cout << "1path file:\t" << pathfile_path << endl;
+	cout << "1khash file:\t" << khashfile_path << endl << endl;
 
 	// compute syncmer stats
-	int exit_code = compute_syncmer_stats(filename_path);
+	int exit_code = compute_syncmer_stats(pathfile_path, khashfile_path, outfile_path);
 
 	return exit_code;
 };
