@@ -92,7 +92,7 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 	oneFileClose(ipath);
 
 	// write out unique syncmers and their total counts	
-	char *buf = new char[synLen + 1];
+	char *buf = new char[synLen + 1]();
 
 	ofstream outfile;
 	outfile.open(outfile_path);
