@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <cassert>
 #include <unordered_set>
 #include "syncmerstats.hpp"
 
@@ -52,6 +53,7 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 				// get source file index from P lines
 				int64_t new_source_id = oneInt(ipath, 1);
 				if (new_source_id != source_id) {
+					if (source_id % 50 == 0) cout << "Start reading paths from file " << new_source_id << " ..." << endl;
 					if (new_source_id != source_id + 1) {
 						cout << source_id << " " << new_source_id << endl;
 						cerr << "Error: paths in input file are not ordered." << endl;
@@ -95,9 +97,9 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 	char *buf = new char[synLen + 1]();
 
 	ofstream outfile;
-	outfile.open(outfile_path);
+	outfile.open(outfile_path + "_syncmers.tsv");
 	if (!outfile.good()) {
-		cerr << "Error: output file " << outfile_path << " cannot be created." << endl;
+		cerr << "Error: output file " << outfile_path << "_syncmers.tsv cannot be created." << endl;
 		delete[] buf;
 		oneSchemaDestroy(schema);
 		oneFileClose(ipath);
@@ -108,6 +110,9 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 	size_t total_unique = 0;
 	outfile << "syncmer_ID\tsyncmer_seq_canonical\ttotal_count" << endl;
 
+	// record how often each count (0,1,...,maxfile_ID) was seen
+	vector<uint32_t> histogram(source_id + 1, 0);
+
 	// write counts for each syncmer
 	for (size_t sync_id = 1; sync_id < counts.size(); ++sync_id) {
 		// do not output syncmers that are not unique
@@ -116,11 +121,24 @@ int compute_syncmer_stats (string& pathfile_path, string& khashfile_path, string
 		total_unique += 1;
 		char* seq = kmerHashSeq(sms->kh, sync_id, buf);
 		outfile << sync_id << "\t" << seq << "\t" << counts[sync_id] << endl;
+		assert (counts[sync_id] < histogram.size());		
+		histogram[counts[sync_id]] += 1;
 	}
 	outfile.close();
 	delete[] buf;
 	syncmerSetDestroy(sms);
 	oneSchemaDestroy(schema);
+
+	// write out the histogram file as well
+	outfile.open(outfile_path + "_histogram.tsv");
+ 	if (!outfile.good()) {
+		cerr << "Error: output file " << outfile_path << "_histogram.tsv cannot be created." << endl;
+		return 1;
+	}
+	for (size_t i = 0; i < histogram.size(); ++i) {
+		outfile << i << "\t" << histogram[i] << endl;
+	}
+	outfile.close();
 
 	cout << "Wrote syncmer statistics to " << outfile_path << endl;
 	cout << "Total syncmers:\t" << nSyncmers << endl;
