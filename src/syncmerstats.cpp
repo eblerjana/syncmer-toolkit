@@ -164,7 +164,6 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	if (!ofGBWT) {
 		cerr << "Error: could not open gbwt file." << endl;
 		oneSchemaDestroy(schema);
-		oneFileClose(ofGBWT);
 		return 1;
 	}
 
@@ -174,7 +173,6 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	if (!sgb) {
 		cerr << "Error: coult not read GBWT from file " << gbwtfile_path << endl;
 		oneSchemaDestroy(schema);
-		oneFileClose(ofGBWT);
 		return 1;
 	}
 
@@ -184,7 +182,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	if (!ofPZ) {
 		cerr << "Error: could not re-open gbwt file." << endl;
 		oneSchemaDestroy(schema);
-		oneFileClose(ofPZ);
+		syngBWTdestroy(sgb);
 		return 1;
 	}
 
@@ -204,6 +202,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 						cerr << "Error: paths in input file are not ordered." << endl;
 						oneSchemaDestroy(schema);
 						oneFileClose(ofPZ);
+						syngBWTdestroy(sgb);
 						return 1;
 					}
 					source_id = new_source_id;
@@ -245,6 +244,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		if (sourceFiles[i] != current_file) {
 			// entering next file
 			seen.clear();
+			current_file = sourceFiles[i];
 		}
 
 		// visit the start node of the path
@@ -310,9 +310,5 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	cout << "Wrote syncmer statistics to " << outfile_path << endl;
 	cout << "Total syncmers:\t" << nSyncmers << endl;
 	cout << "Total unique syncmers:\t" << total_unique << endl;
-	return 0;
-
-
-
 	return 0;
 }
