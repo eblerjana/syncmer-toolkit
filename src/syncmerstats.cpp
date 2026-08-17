@@ -9,6 +9,18 @@
 
 using namespace std;
 
+static char *schemaText =
+  "1 3 def 1 0               schema for SyncmerSet\n"
+  ".\n"
+  "P 5 khash                 KMER HASH\n"
+  "S 7 syncset               SYNCMER SET\n"
+  "D h 3 3 INT 3 INT 3 INT   k, w, seed for the seqhash: for syncs k = |smer|, w+k = |syncmer|\n"
+  "O t 3 3 INT 3 INT 3 INT   max, len, dim for KmerHash table\n"
+  "D S 1 3 DNA               packed sequences aligned to 64-bit boundaries\n" 
+  "D L 1 8 INT_LIST          locations in the table\n"
+  "D C 1 8 INT_LIST          kmer counts\n"
+  "D M 1 6 STRING            maximum count in any input - (1..127)\n";
+
 void increase_syncmer_count(vector<int32_t>& counts, size_t position) {
 	if (counts[position] < 0) {
 		// non unique, don't add.
@@ -37,16 +49,25 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 	if (!ipath) {
 		cerr << "Error: could not open 1path file." << endl;
 		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	// read the khash file to look up syncmer counts
+	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngmap.c
+	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
+	OneFile *syn_of = oneFileOpenRead(khashfile_path.data(), syn_schema, "syncset", 1);
+	oneSchemaDestroy(syn_schema);
+	if (!syn_of) {
+		cerr << "Error: could not open khash file." << endl;
+		oneSchemaDestroy(schema);
 		oneFileClose(ipath);
 		return 1;
 	}
 
-	// read the khash file to look up syncmer counts and  sequences
-	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngmap.c
-	SyncmerSet *sms = syncmerSetRead(khashfile_path.data());
-	int synLen = sms->params.w + sms->params.k;
-	// max syncmer ID
-	long long int nSyncmers = kmerHashMax (sms->kh);
+	KmerHash *kh = kmerHashReadOneFile(syn_of);
+	long long int nSyncmers = kmerHashMax(kh);
+	oneFileClose(syn_of);
+	kmerHashDestroy(kh);
 
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
@@ -102,22 +123,19 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		line_read = oneReadLine(ipath);
 	}
 	oneFileClose(ipath);
+	oneSchemaDestroy(schema);
 
 	// write out unique syncmers and their total counts	
-	char *buf = new char[synLen + 1]();
-
 	ofstream outfile;
 	outfile.open(outfile_path + "_syncmers.tsv");
 	if (!outfile.good()) {
 		cerr << "Error: output file " << outfile_path << "_syncmers.tsv cannot be created." << endl;
-		delete[] buf;
-		oneSchemaDestroy(schema);
 		return 1;
 	}
 
 	// write header and prepare lines for syncmers not covered by any file
 	size_t total_unique = 0;
-	outfile << "syncmer_ID\tsyncmer_seq_canonical\ttotal_count" << endl;
+	outfile << "syncmer_ID\ttotal_count" << endl;
 
 	// record how often each count (0,1,...,maxfile_ID) was seen
 	vector<uint32_t> histogram(source_id + 1, 0);
@@ -128,15 +146,11 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		if (counts[sync_id] < 0) continue;
 		// look up syncmer sequence
 		total_unique += 1;
-		char* seq = kmerHashSeq(sms->kh, sync_id, buf);
-		outfile << sync_id << "\t" << seq << "\t" << counts[sync_id] << endl;
+		outfile << sync_id << "\t" << counts[sync_id] << endl;
 		assert (counts[sync_id] < histogram.size());		
 		histogram[counts[sync_id]] += 1;
 	}
 	outfile.close();
-	delete[] buf;
-	syncmerSetDestroy(sms);
-	oneSchemaDestroy(schema);
 
 	// write out the histogram file as well
 	outfile.open(outfile_path + "_histogram.tsv");
@@ -158,7 +172,10 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_path, string& outfile_path) {
 	
 	// read the gbwt file
+	cout << "Creating schema ..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
+
+	cout << "Opening GBWT file for reading ..." << endl;
 	OneFile* ofGBWT = oneFileOpenRead(gbwtfile_path.data(), schema, "gbwt", 1);
 	
 	if (!ofGBWT) {
@@ -167,6 +184,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		return 1;
 	}
 
+	cout << "Creating sync BWT object ..." << endl;
 	SyngBWT* sgb = syngBWTread(ofGBWT);
 	oneFileClose(ofGBWT);
 
@@ -176,6 +194,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		return 1;
 	}
 
+	cout << "Re-opening GBWT file for reading ..." << endl;
 	// reopen the file here again to be on the safe side (because we don't know what effect GBWT construction had on of GBWT)
 	OneFile* ofPZ = oneFileOpenRead(gbwtfile_path.data(), schema, "gbwt", 1);
 
@@ -191,6 +210,8 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	vector<PathStart> starts;
 	vector<int64_t> sourceFiles;
 	int64_t source_id = 0;
+
+	cout << "Reading GBWT file line-by-line ..."  << endl;
 	bool line_read = oneReadLine(ofPZ);
 
 	while(line_read && ofPZ->lineType != 'V') {
@@ -225,12 +246,22 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	oneFileClose(ofPZ);
 	oneSchemaDestroy(schema);
 
-	// load the syncmers from khash file
-	SyncmerSet *sms = syncmerSetRead(khashfile_path.data());
-	int synLen = sms->params.w + sms->params.k;
-	// max syncmer ID
-	long long int nSyncmers = kmerHashMax (sms->kh);
+	cout << "Loading syncmer stats from khash file ..." << endl;
+	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
+	OneFile *syn_of = oneFileOpenRead(khashfile_path.data(), syn_schema, "syncset", 1);
+	oneSchemaDestroy(syn_schema);
+	if (!syn_of) {
+		cerr << "Error: could not open khash file." << endl;
+		syngBWTdestroy(sgb);
+		return 1;
+	}
 
+	KmerHash *kh = kmerHashReadOneFile(syn_of);
+        long long int nSyncmers = kmerHashMax(kh);
+	oneFileClose(syn_of);
+	kmerHashDestroy(kh);
+
+	cout << "Initializing the syncmer count vector ..." << endl;
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
 
@@ -240,6 +271,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	// traverse the paths through the GBWT
 	int64_t current_file = -1;
 
+	cout << "Traversing the paths through the GBWT ..." << endl;
 	for (size_t i = 0; i < starts.size(); ++i) {
 		if (sourceFiles[i] != current_file) {
 			// entering next file
@@ -250,6 +282,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		// visit the start node of the path
 		visit(starts[i].startNode, counts, seen);
 
+		cout << "Traverse path starting at: " << starts[i].startNode << endl;
 		// traverse the rest of the path, starting from the start node
 		SyngBWTpath *sbp = syngBWTpathStartOld(sgb, starts[i].startNode, starts[i].j0);
 
@@ -261,21 +294,18 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	}	
 	syngBWTdestroy(sgb);
 
-	// write out unique syncmers and their total counts	
-	char *buf = new char[synLen + 1]();
-
+	cout << "Writing results to output file ..." << endl;
+	// write out unique syncmers and their total counts
 	ofstream outfile;
 	outfile.open(outfile_path + "_syncmers.tsv");
 	if (!outfile.good()) {
 		cerr << "Error: output file " << outfile_path << "_syncmers.tsv cannot be created." << endl;
-		delete[] buf;
-		syncmerSetDestroy(sms);
 		return 1;
 	}
 
 	// write header and prepare lines for syncmers not covered by any file
 	size_t total_unique = 0;
-	outfile << "syncmer_ID\tsyncmer_seq_canonical\ttotal_count" << endl;
+	outfile << "syncmer_ID\ttotal_count" << endl;
 
 	// record how often each count (0,1,...,maxfile_ID) was seen
 	vector<uint32_t> histogram(source_id + 1, 0);
@@ -286,15 +316,11 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		if (counts[sync_id] < 0) continue;
 		// look up syncmer sequence
 		total_unique += 1;
-		char* seq = kmerHashSeq(sms->kh, sync_id, buf);
-		outfile << sync_id << "\t" << seq << "\t" << counts[sync_id] << endl;
+		outfile << sync_id << "\t" << counts[sync_id] << endl;
 		assert (counts[sync_id] < histogram.size());		
 		histogram[counts[sync_id]] += 1;
 	}
 	outfile.close();
-
-	delete[] buf;
-	syncmerSetDestroy(sms);
 
 	// write out the histogram file as well
 	outfile.open(outfile_path + "_histogram.tsv");
