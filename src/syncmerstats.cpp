@@ -246,8 +246,9 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	oneFileClose(ofPZ);
 	oneSchemaDestroy(schema);
 
-	cout << "Loading syncmer stats from khash file ..." << endl;
+	cout << "Create schema for loading syncmer stats from khash file ..." << endl;
 	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
+	cout << "Open khash file to read syncmer stats ..." << endl;
 	OneFile *syn_of = oneFileOpenRead(khashfile_path.data(), syn_schema, "syncset", 1);
 	oneSchemaDestroy(syn_schema);
 	if (!syn_of) {
@@ -256,6 +257,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		return 1;
 	}
 
+	cout << "Create KmerHash ..." << endl;
 	KmerHash *kh = kmerHashReadOneFile(syn_of);
         long long int nSyncmers = kmerHashMax(kh);
 	oneFileClose(syn_of);
@@ -322,6 +324,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	}
 	outfile.close();
 
+	cout << "Write histogram file ..." << endl;
 	// write out the histogram file as well
 	outfile.open(outfile_path + "_histogram.tsv");
  	if (!outfile.good()) {
