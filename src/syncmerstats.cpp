@@ -40,6 +40,30 @@ void visit(int32_t& node, vector<int32_t>& counts, unordered_set<long long int>&
 	}
 }
 
+long long int get_max(string& khash_filename) {
+	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
+	OneFile* of = oneFileOpenRead(khash_filename.data(), syn_schema, "syncset", 1);
+	if (!of) {
+		oneSchemaDestroy(syn_schema);
+		throw runtime_error("Error: could not open khash file.");
+	}
+
+	bool line_read = oneReadLine(of);
+	long long int maxVal = 0;
+	while (line_read) {
+		if (of->lineType == 't') {
+			maxVal = oneInt(of, 0);
+			oneFileClose(of);
+			oneSchemaDestroy(syn_schema);
+			return maxVal;
+		}
+		line_read = oneReadLine(of);
+	}
+	oneFileClose(of);
+	oneSchemaDestroy(syn_schema);
+	throw runtime_error("Error: khash file does not contain any t lines.");
+}
+
 int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_path, string& outfile_path) {
 
 	// read the 1path file
@@ -53,21 +77,15 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 	}
 
 	// read the khash file to look up syncmer counts
-	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngmap.c
-	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
-	OneFile *syn_of = oneFileOpenRead(khashfile_path.data(), syn_schema, "syncset", 1);
-	oneSchemaDestroy(syn_schema);
-	if (!syn_of) {
-		cerr << "Error: could not open khash file." << endl;
+	long long int nSyncmers;
+	try {
+		nSyncmers = get_max(khashfile_path);
+	} catch (const runtime_error& e) {
+		cerr << e.what();
 		oneSchemaDestroy(schema);
 		oneFileClose(ipath);
 		return 1;
 	}
-
-	KmerHash *kh = kmerHashReadOneFile(syn_of);
-	long long int nSyncmers = kmerHashMax(kh);
-	oneFileClose(syn_of);
-	kmerHashDestroy(kh);
 
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
@@ -246,22 +264,16 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	oneFileClose(ofPZ);
 	oneSchemaDestroy(schema);
 
-	cout << "Create schema for loading syncmer stats from khash file ..." << endl;
-	OneSchema *syn_schema = oneSchemaCreateFromText(schemaText);
-	cout << "Open khash file to read syncmer stats ..." << endl;
-	OneFile *syn_of = oneFileOpenRead(khashfile_path.data(), syn_schema, "syncset", 1);
-	oneSchemaDestroy(syn_schema);
-	if (!syn_of) {
-		cerr << "Error: could not open khash file." << endl;
+	cout << "Read max number of syncmers from khash file ..." << endl;
+	long long int nSyncmers;
+	try {
+		nSyncmers = get_max(khashfile_path);
+		cout << "DIM: " << nSyncmers << endl;
+	} catch (const runtime_error& e) {
+		cerr << e.what();
 		syngBWTdestroy(sgb);
 		return 1;
 	}
-
-	cout << "Create KmerHash ..." << endl;
-	KmerHash *kh = kmerHashReadOneFile(syn_of);
-        long long int nSyncmers = kmerHashMax(kh);
-	oneFileClose(syn_of);
-	kmerHashDestroy(kh);
 
 	cout << "Initializing the syncmer count vector ..." << endl;
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
