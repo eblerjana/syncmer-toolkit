@@ -67,7 +67,10 @@ long long int get_max(string& khash_filename) {
 int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_path, string& outfile_path) {
 
 	// read the 1path file
+	cout << "Creating schema ..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
+
+	cout << "Opening path file for reading ..." << endl;
 	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
 
 	if (!ipath) {
@@ -77,6 +80,7 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 	}
 
 	// read the khash file to look up syncmer counts
+	cout << "Get max syncmer count from khash file ..." << endl;
 	long long int nSyncmers;
 	try {
 		nSyncmers = get_max(khashfile_path);
@@ -87,9 +91,11 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		return 1;
 	}
 
+	cout << "Initialize the syncmer count vector ..." << endl;
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
 
+	cout << "Reading the path file line by line ..." << endl;
 	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngpath2gbwt.c
 	bool line_read = oneReadLine(ipath);
 	int64_t source_id = 0;
@@ -140,9 +146,12 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		}
 		line_read = oneReadLine(ipath);
 	}
+
+	cout << "Close open files and destroy schema ..." << endl;
 	oneFileClose(ipath);
 	oneSchemaDestroy(schema);
 
+	cout << "Write syncmer counts ..." << endl;
 	// write out unique syncmers and their total counts	
 	ofstream outfile;
 	outfile.open(outfile_path + "_syncmers.tsv");
@@ -151,6 +160,7 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		return 1;
 	}
 
+	cout << "Write syncmer histogram ... " << endl;
 	// write header and prepare lines for syncmers not covered by any file
 	size_t total_unique = 0;
 	outfile << "syncmer_ID\ttotal_count" << endl;
