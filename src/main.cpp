@@ -80,10 +80,10 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	cout << "Running program with the following files:" << endl;
-	cout << "-----------------------------------------" << endl;
-	cout << ftype << " file:\t" << sourcefile_path << endl;
-	cout << "1khash file:\t" << khashfile_path << endl << endl;
+	cerr << "Running program with the following files:" << endl;
+	cerr << "-----------------------------------------" << endl;
+	cerr << ftype << " file:\t" << sourcefile_path << endl;
+	cerr << "1khash file:\t" << khashfile_path << endl << endl;
 
 	int exit_code = 0;
 

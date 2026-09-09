@@ -67,10 +67,10 @@ long long int get_max(string& khash_filename) {
 int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_path, string& outfile_path) {
 
 	// read the 1path file
-	cout << "Creating schema ..." << endl;
+	cerr << "Creating schema ..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
 
-	cout << "Opening path file for reading ..." << endl;
+	cerr << "Opening path file for reading ..." << endl;
 	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
 
 	if (!ipath) {
@@ -80,7 +80,7 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 	}
 
 	// read the khash file to look up syncmer counts
-	cout << "Get max syncmer count from khash file ..." << endl;
+	cerr << "Get max syncmer count from khash file ..." << endl;
 	long long int nSyncmers;
 	try {
 		nSyncmers = get_max(khashfile_path);
@@ -91,11 +91,11 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		return 1;
 	}
 
-	cout << "Initialize the syncmer count vector ..." << endl;
+	cerr << "Initialize the syncmer count vector ..." << endl;
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
 
-	cout << "Reading the path file line by line ..." << endl;
+	cerr << "Reading the path file line by line ..." << endl;
 	// use this as a template: https://github.com/richarddurbin/syng/blob/main/syngpath2gbwt.c
 	bool line_read = oneReadLine(ipath);
 	int64_t source_id = 0;
@@ -108,9 +108,9 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 				// get source file index from P lines
 				int64_t new_source_id = oneInt(ipath, 1);
 				if (new_source_id != source_id) {
-					if (source_id % 50 == 0) cout << "Start reading paths from file " << new_source_id << " ..." << endl;
+					if (source_id % 50 == 0) cerr << "Start reading paths from file " << new_source_id << " ..." << endl;
 					if (new_source_id != source_id + 1) {
-						cout << source_id << " " << new_source_id << endl;
+						cerr << source_id << " " << new_source_id << endl;
 						cerr << "Error: paths in input file are not ordered." << endl;
 						oneSchemaDestroy(schema);
 						oneFileClose(ipath);
@@ -147,11 +147,11 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		line_read = oneReadLine(ipath);
 	}
 
-	cout << "Close open files and destroy schema ..." << endl;
+	cerr << "Close open files and destroy schema ..." << endl;
 	oneFileClose(ipath);
 	oneSchemaDestroy(schema);
 
-	cout << "Write syncmer counts ..." << endl;
+	cerr << "Write syncmer counts ..." << endl;
 	// write out unique syncmers and their total counts	
 	ofstream outfile;
 	outfile.open(outfile_path + "_syncmers.tsv");
@@ -160,7 +160,7 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 		return 1;
 	}
 
-	cout << "Write syncmer histogram ... " << endl;
+	cerr << "Write syncmer histogram ... " << endl;
 	// write header and prepare lines for syncmers not covered by any file
 	size_t total_unique = 0;
 	outfile << "syncmer_ID\ttotal_count" << endl;
@@ -191,19 +191,19 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 	}
 	outfile.close();
 
-	cout << "Wrote syncmer statistics to " << outfile_path << endl;
-	cout << "Total syncmers:\t" << nSyncmers << endl;
-	cout << "Total unique syncmers:\t" << total_unique << endl;
+	cerr << "Wrote syncmer statistics to " << outfile_path << endl;
+	cerr << "Total syncmers:\t" << nSyncmers << endl;
+	cerr << "Total unique syncmers:\t" << total_unique << endl;
 	return 0;
 }
 
 int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_path, string& outfile_path) {
 	
 	// read the gbwt file
-	cout << "Creating schema ..." << endl;
+	cerr << "Creating schema ..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
 
-	cout << "Opening GBWT file for reading ..." << endl;
+	cerr << "Opening GBWT file for reading ..." << endl;
 	OneFile* ofGBWT = oneFileOpenRead(gbwtfile_path.data(), schema, "gbwt", 1);
 	
 	if (!ofGBWT) {
@@ -212,7 +212,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		return 1;
 	}
 
-	cout << "Creating sync BWT object ..." << endl;
+	cerr << "Creating sync BWT object ..." << endl;
 	SyngBWT* sgb = syngBWTread(ofGBWT);
 	oneFileClose(ofGBWT);
 
@@ -222,7 +222,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		return 1;
 	}
 
-	cout << "Re-opening GBWT file for reading ..." << endl;
+	cerr << "Re-opening GBWT file for reading ..." << endl;
 	// reopen the file here again to be on the safe side (because we don't know what effect GBWT construction had on of GBWT)
 	OneFile* ofPZ = oneFileOpenRead(gbwtfile_path.data(), schema, "gbwt", 1);
 
@@ -239,7 +239,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	vector<int64_t> sourceFiles;
 	int64_t source_id = 0;
 
-	cout << "Reading GBWT file line-by-line ..."  << endl;
+	cerr << "Reading GBWT file line-by-line ..."  << endl;
 	bool line_read = oneReadLine(ofPZ);
 
 	while(line_read && ofPZ->lineType != 'V') {
@@ -274,18 +274,17 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	oneFileClose(ofPZ);
 	oneSchemaDestroy(schema);
 
-	cout << "Read max number of syncmers from khash file ..." << endl;
+	cerr << "Read max number of syncmers from khash file ..." << endl;
 	long long int nSyncmers;
 	try {
 		nSyncmers = get_max(khashfile_path);
-		cout << "DIM: " << nSyncmers << endl;
 	} catch (const runtime_error& e) {
 		cerr << e.what();
 		syngBWTdestroy(sgb);
 		return 1;
 	}
 
-	cout << "Initializing the syncmer count vector ..." << endl;
+	cerr << "Initializing the syncmer count vector ..." << endl;
 	// keep a count for each syncmer. Entries of -1 indicate non-unique syncmers
 	vector<int32_t> counts(nSyncmers + 1, 0);
 
@@ -295,7 +294,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	// traverse the paths through the GBWT
 	int64_t current_file = -1;
 
-	cout << "Traversing the paths through the GBWT ..." << endl;
+	cerr << "Traversing the paths through the GBWT ..." << endl;
 	for (size_t i = 0; i < starts.size(); ++i) {
 		if (sourceFiles[i] != current_file) {
 			// entering next file
@@ -306,7 +305,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 		// visit the start node of the path
 		visit(starts[i].startNode, counts, seen);
 
-		cout << "Traverse path starting at: " << starts[i].startNode << endl;
+		cerr << "Traverse path starting at: " << starts[i].startNode << endl;
 		// traverse the rest of the path, starting from the start node
 		SyngBWTpath *sbp = syngBWTpathStartOld(sgb, starts[i].startNode, starts[i].j0);
 
@@ -318,7 +317,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	}	
 	syngBWTdestroy(sgb);
 
-	cout << "Writing results to output file ..." << endl;
+	cerr << "Writing results to output file ..." << endl;
 	// write out unique syncmers and their total counts
 	ofstream outfile;
 	outfile.open(outfile_path + "_syncmers.tsv");
@@ -346,7 +345,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	}
 	outfile.close();
 
-	cout << "Write histogram file ..." << endl;
+	cerr << "Write histogram file ..." << endl;
 	// write out the histogram file as well
 	outfile.open(outfile_path + "_histogram.tsv");
  	if (!outfile.good()) {
@@ -358,8 +357,8 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	}
 	outfile.close();
 
-	cout << "Wrote syncmer statistics to " << outfile_path << endl;
-	cout << "Total syncmers:\t" << nSyncmers << endl;
-	cout << "Total unique syncmers:\t" << total_unique << endl;
+	cerr << "Wrote syncmer statistics to " << outfile_path << endl;
+	cerr << "Total syncmers:\t" << nSyncmers << endl;
+	cerr << "Total unique syncmers:\t" << total_unique << endl;
 	return 0;
 }
