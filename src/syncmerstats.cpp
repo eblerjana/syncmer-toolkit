@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <vector>
 #include <cassert>
 #include <unordered_set>
@@ -360,5 +361,130 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 	cerr << "Wrote syncmer statistics to " << outfile_path << endl;
 	cerr << "Total syncmers:\t" << nSyncmers << endl;
 	cerr << "Total unique syncmers:\t" << total_unique << endl;
+	return 0;
+}
+
+
+int syncmercompute_syncmer_distances_from_paths (string& pathfile_path, string& khashfile_path, string& syncmerset_path, string& outfile_path) {
+
+	cerr << "Creating schema ..." << endl;
+	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
+
+	cerr << "Opening path file for reading ..." << endl;
+	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
+
+	if (!ipath) {
+		cerr << "Error: could not open 1path file." << endl;
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	// read the khash file to look up syncmer count
+	cerr << "Get max syncmer count from khash file ..." << endl;
+	long long int nSyncmers;
+	try {
+		nSyncmers = get_max(khashfile_path);
+	} catch (const runtime_error& e) {
+		cerr << e.what();
+		oneSchemaDestroy(schema);
+		oneFileClose(ipath);
+		return 1;
+	}
+
+	// initialize syncmer vector indicating presence/absence of a syncmer in given set
+	vector<bool> is_present(nSyncmers+1, false);
+
+	// parse the provided syncmer list
+	cerr << "Read the provided syncmer list ..." << endl;
+	ifstream infile;
+	infile.open(syncmerset_path);
+	if (!infile.good()) {
+		cerr << "Error: file " << syncmerset_path << " cannot be opened." << endl;
+		oneSchemaDestroy(schema);
+		oneFileClose(ipath);
+		return 1;
+	}
+
+	string line;
+	while (getline(infile, line)) {
+		stringstream ss(line);
+		string sync_id_str;
+		long long int sync_id;
+		if (getline(ss, sync_id_str, '\t')) {
+			stringstream ss_sync (sync_id_str);
+			ss_sync >> sync_id;
+			// mark this element
+			is_present[sync_id] = true;
+		}
+	}
+
+	// parse the ipath file and store the z and c lines
+	cerr << "Read the path file line by line ..." << endl;
+	bool line_read = oneReadLine(ipath);
+
+	// current z line
+	long long int n_sync = 0;
+	long long int n_lens = 0;
+	long long int* syncs = nullptr;
+	long long int* positions = nullptr;
+
+	ofstream outfile;
+	outfile.open(outfile_path);
+	long long int path_id = 1; 
+
+	while(line_read) {
+		switch(ipath->lineType) {
+			case 'z': {
+				n_sync = oneLen(ipath);
+				syncs = oneIntList(ipath);
+				break;
+			}
+			case 'o': {
+				n_lens = oneLen(ipath);
+				positions = oneIntList(ipath);
+				
+				// o line should always come after the z line.
+				if (n_sync != n_lens) {
+					cerr << "Error: no matching z line read before this o line." << endl;
+					oneSchemaDestroy(schema);
+					oneFileClose(ipath);
+					outfile.close();
+					return 1;
+				}
+				
+				// keep track of position of previous syncmer
+				long long int prev_pos = -1;
+				// iterate through syncmers on current path
+				for (size_t i = 0; i < n_sync; ++i) {
+					long long int sync_id = std::abs(syncs[i]);
+					long long int pos = std::abs(positions[i]);
+
+					// check if current syncmer is in subset
+					if (sync_id >= is_present.size()) {
+						cerr << "Error: syncmer ID is out of bounds." << endl;
+						oneSchemaDestroy(schema);
+						oneFileClose(ipath);
+						outfile.close();
+						return 1;
+					}
+
+					if (is_present[sync_id]) {
+						// syncmer is in subset, so record its distance to previous syncmer
+						if (pos != -1) {
+							outfile << path_id << "\t" << pos - prev_pos << endl;
+						}
+						prev_pos = pos;
+					}
+				}
+				path_id += 1;
+				break;
+			}
+			default: break;
+		}
+	}
+
+	cerr << "Close open files and destroy schema ..." << endl;
+	oneFileClose(ipath);
+	oneSchemaDestroy(schema);
 	return 0;
 }
