@@ -34,32 +34,25 @@ void check_open_file(string filename, string filetype) {
 	oneSchemaDestroy(schema);
 }
 
-int main(int argc, char* argv[]) {
 
-	// parse command line
-	string usage = "Usage:\tsyncmer-toolkit <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit <.1gbwt file> <.1khash file> <outname>\n";
+int create_histogram(int argc, char* argv[]) {
 
-	if (argc == 1) {
-		// no arguments provided, just print usage info
-		cerr << usage << endl;
-		return 0;
-	}
-
-	if (argc < 4) {
+	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n";
+	if (argc < 5) {
 		cerr << usage << "\n" << endl;
 		cerr << "Error: Too few commandline arguments provided." << endl;
 		return 1;
 	}
 
-	if (argc > 4) {
+	if (argc > 5) {
 		cerr << usage << "\n" << endl;
 		cerr << "Error: Too many commandline arguments provided." << endl;
 		return 1;
 	}
 
-	string sourcefile_path = argv[1];
-	string khashfile_path = argv[2];
-	string outfile_path = argv[3];
+	string sourcefile_path = argv[2];
+	string khashfile_path = argv[3];
+	string outfile_path = argv[4];
 
 	string ftype = "";
 	if (ends_with(sourcefile_path, ".1path")) {
@@ -95,4 +88,33 @@ int main(int argc, char* argv[]) {
 	}
 
 	return exit_code;
+};
+
+int compute_distances(int argc, char* argv[]) {
+	cerr << "Not yet implemented." << endl;
+	return 0;
+}
+
+int main(int argc, char* argv[]) {
+
+	// parse command line
+	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n\tsyncmer-toolkit distances <.1gbwt file> <.1khash file> <syncmerset> <outname>\n";
+
+	if (argc < 3) {
+		// no arguments provided, just print usage info
+		cerr << usage << endl;
+		return 0;
+	}
+
+	string program = argv[1];
+
+	if (program == "histogram") {
+		return create_histogram(argc, argv);
+	} else if (program == "distances") {
+		return compute_distances(argc, argv);
+	} else {
+		cerr << usage << "\n" << endl;
+		cerr << "Error: program name must be specified as histogram or distances."  << endl;
+		return 1;
+	}
 };

@@ -444,7 +444,7 @@ int syncmercompute_syncmer_distances_from_paths (string& pathfile_path, string& 
 				positions = oneIntList(ipath);
 				
 				// o line should always come after the z line.
-				if (n_sync != n_lens) {
+				if ((syncs == nullptr) || (n_sync != n_lens)) {
 					cerr << "Error: no matching z line read before this o line." << endl;
 					oneSchemaDestroy(schema);
 					oneFileClose(ipath);
