@@ -365,7 +365,7 @@ int compute_syncmer_stats_from_gbwt (string& gbwtfile_path, string& khashfile_pa
 }
 
 
-int syncmercompute_syncmer_distances_from_paths (string& pathfile_path, string& khashfile_path, string& syncmerset_path, string& outfile_path) {
+int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfile_path, string& syncmerset_path, string& outfile_path) {
 
 	cerr << "Creating schema ..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
@@ -470,8 +470,8 @@ int syncmercompute_syncmer_distances_from_paths (string& pathfile_path, string& 
 
 					if (is_present[sync_id]) {
 						// syncmer is in subset, so record its distance to previous syncmer
-						if (pos != -1) {
-							outfile << path_id << "\t" << pos - prev_pos << endl;
+						if (prev_pos != -1) {
+							outfile << path_id << "\t" << pos - prev_pos << "\t" << sync_id  << endl;
 						}
 						prev_pos = pos;
 					}
@@ -481,6 +481,7 @@ int syncmercompute_syncmer_distances_from_paths (string& pathfile_path, string& 
 			}
 			default: break;
 		}
+		line_read = oneReadLine(ipath);
 	}
 
 	cerr << "Close open files and destroy schema ..." << endl;

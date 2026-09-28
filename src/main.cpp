@@ -91,14 +91,49 @@ int create_histogram(int argc, char* argv[]) {
 };
 
 int compute_distances(int argc, char* argv[]) {
-	cerr << "Not yet implemented." << endl;
-	return 0;
+
+	string usage = "Usage:\tsyncmer-toolkit distances <.1path file> <.1khash file> <syncmerset> <outname>\n";
+
+	if (argc < 6) {
+		cerr << usage << endl;
+		cerr << "Error: Too few arguments provided." << endl;
+		return 1;
+	}
+
+	if (argc > 6) {
+		cerr << usage << endl;
+		cerr << "Error: Too many arguments provided." << endl;
+		return 1;
+	}
+
+	string sourcefile_path = argv[2];
+	string khashfile_path = argv[3];
+	string syncmerset_path = argv[4];
+	string outfile_path = argv[5];
+
+	// make sure that 1path and 1khash files can be opened
+	try {
+		check_open_file(sourcefile_path, "path");
+		check_open_file(khashfile_path, "khash");
+	} catch (const runtime_error& e) {
+		cerr << e.what();
+		return 1;
+	}
+
+	cerr << "Running program with the following files:" << endl;
+	cerr << "-----------------------------------------" << endl;
+	cerr << "path file:\t" << sourcefile_path << endl;
+	cerr << "khash file:\t" << khashfile_path << endl;
+	cerr << "syncmerset file:\t" << syncmerset_path << endl << endl;
+
+	// compute distances
+	return compute_syncmer_distances_from_paths(sourcefile_path, khashfile_path, syncmerset_path, outfile_path);
 }
 
 int main(int argc, char* argv[]) {
 
 	// parse command line
-	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n\tsyncmer-toolkit distances <.1gbwt file> <.1khash file> <syncmerset> <outname>\n";
+	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n\tsyncmer-toolkit distances <.1path file> <.1khash file> <syncmerset> <outname>\n";
 
 	if (argc < 3) {
 		// no arguments provided, just print usage info
