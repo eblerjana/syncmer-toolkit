@@ -418,7 +418,7 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 			stringstream ss_sync (sync_id_str);
 			ss_sync >> sync_id;
 			// mark this element
-			if (sync_id > nSyncmers) {
+			if ((sync_id < 1) || (sync_id > nSyncmers)) {
 				cerr << "Error: encountered syncmer ID that is larger than the number of synmcers." << endl;
 				oneSchemaDestroy(schema);
 				oneFileClose(ipath);
@@ -443,6 +443,13 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 
 	ofstream outfile;
 	outfile.open(outfile_path);
+	if (!outfile.good()) {
+		cerr << "Error: output file cannot be opened." << endl;
+		oneSchemaDestroy(schema);
+		oneFileClose(ipath);
+		return 1;
+	}
+
 	long long int path_id = 1; 
 
 	while(line_read) {
