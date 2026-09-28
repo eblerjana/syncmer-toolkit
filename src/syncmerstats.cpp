@@ -128,7 +128,7 @@ int compute_syncmer_stats_from_paths (string& pathfile_path, string& khashfile_p
 				long long int n_sync = oneLen(ipath);
 				long long int* syncs = oneIntList(ipath);
 				// iterate all syncmer nodes
-				for (size_t i = 0; i < n_sync; ++i) {
+				for (long long int i = 0; i < n_sync; ++i) {
 					long long int sync_id = std::abs(syncs[i]);
 					if (seen.find(sync_id) != seen.end()) {
 						// set global count to -1, syncmer is not unique
@@ -411,12 +411,25 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 		string sync_id_str;
 		long long int sync_id;
 		if (getline(ss, sync_id_str, '\t')) {
+			if (sync_id_str.rfind("syncmer_ID", 0) == 0) {
+				// header line, continue.
+				continue;
+			}
 			stringstream ss_sync (sync_id_str);
 			ss_sync >> sync_id;
 			// mark this element
+			if (sync_id > nSyncmers) {
+				cerr << "Error: encountered syncmer ID that is larger than the number of synmcers." << endl;
+				oneSchemaDestroy(schema);
+				oneFileClose(ipath);
+				infile.close();
+				return 1;
+
+			}
 			is_present[sync_id] = true;
 		}
 	}
+	infile.close();
 
 	// parse the ipath file and store the z and c lines
 	cerr << "Read the path file line by line ..." << endl;
@@ -455,7 +468,7 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 				// keep track of position of previous syncmer
 				long long int prev_pos = -1;
 				// iterate through syncmers on current path
-				for (size_t i = 0; i < n_sync; ++i) {
+				for (long long int i = 0; i < n_sync; ++i) {
 					long long int sync_id = std::abs(syncs[i]);
 					long long int pos = std::abs(positions[i]);
 
@@ -471,12 +484,14 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 					if (is_present[sync_id]) {
 						// syncmer is in subset, so record its distance to previous syncmer
 						if (prev_pos != -1) {
-							outfile << path_id << "\t" << pos - prev_pos << "\t" << sync_id  << endl;
+							outfile << path_id << "\t" << pos - prev_pos << "\t" << sync_id  << "\n";
 						}
 						prev_pos = pos;
 					}
 				}
 				path_id += 1;
+				n_sync = 0;
+				syncs = nullptr;
 				break;
 			}
 			default: break;
