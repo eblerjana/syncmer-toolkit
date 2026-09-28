@@ -12,3 +12,9 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-long-long -Wno-unknown-pragmas -O3")
 
 add_subdirectory(cmake/syng)
 add_subdirectory(src)
+
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+	enable_testing()
+	add_subdirectory(tests)
+endif()

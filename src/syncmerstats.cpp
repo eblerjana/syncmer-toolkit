@@ -1,9 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <cassert>
-#include <unordered_set>
 #include "syncmerstats.hpp"
 
 #include "syng_wrapper.hpp"
@@ -409,7 +407,7 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 	while (getline(infile, line)) {
 		stringstream ss(line);
 		string sync_id_str;
-		long long int sync_id;
+		long long int sync_id = -1;
 		if (getline(ss, sync_id_str, '\t')) {
 			if (sync_id_str.rfind("syncmer_ID", 0) == 0) {
 				// header line, continue.
@@ -426,6 +424,7 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 				return 1;
 
 			}
+
 			is_present[sync_id] = true;
 		}
 	}
@@ -507,6 +506,7 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 	}
 
 	cerr << "Close open files and destroy schema ..." << endl;
+	outfile.close();
 	oneFileClose(ipath);
 	oneSchemaDestroy(schema);
 	return 0;
