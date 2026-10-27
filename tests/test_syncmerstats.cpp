@@ -52,6 +52,9 @@ TEST_CASE("Test syncmerstats::get_max missing file.") {
 
 #include "test_helpers.hpp"
 
+#include <map>
+#include <sstream>
+
 // small.1path / small.1gbwt: 2 Quelldateien, 4 Pfade, 11 Syncmere.
 // Syncmere 3-11 liegen auf genau einem Pfad, 1 und 2 auf keinem.
 static const string SMALL_SYNCMERS =
@@ -70,17 +73,44 @@ static const string REPEATS_SYNCMERS =
 	"7\t0\n" "9\t0\n" "10\t1\n" "11\t1\n";
 static const string REPEATS_HISTOGRAM = "0\t4\n" "1\t5\n" "2\t1\n";
 
+// Ausgabe von compute_syncmer_distances_from_paths: pro Quelldatei ein Histogramm der Stücklängen,
+// absteigend nach Distanz. Jeder Pfad wird an den Syncmeren aus der Teilmenge in Stücke zerlegt:
+// Pfadanfang -> 1. Syncmer (nur wenn > 0), zwischen aufeinanderfolgenden Syncmeren,
+// letzter Syncmer -> Pfadende (nur wenn > 0; ohne Syncmer aus der Teilmenge: ganze Pfadlänge).
+//
 // small_subset.tsv enthält die Syncmere 3, 5, 7, 8, 9, 10, 11.
-// Spalten: Pfadnummer, Abstand zum vorherigen Syncmer aus der Teilmenge, Syncmer-ID
-//  Pfad 1: 3 (Pos. 2), 5 (Pos. 6)            -> 5 hat Abstand 4
-//  Pfad 2: nur Syncmer 6                     -> keine Ausgabe
-//  Pfad 3: 7 (Pos. 2), 8 (Pos. 4), 9 (Pos. 6) -> 8 und 9 haben Abstand 2
-//  Pfad 4: 10 (Pos. 2), 11 (Pos. 3)          -> 11 hat Abstand 1
+//  Quelldatei 1, Pfad 1 (Länge 17): 3 (Pos. 2), 5 (Pos. 6)            -> Stücke 2, 4, 11
+//  Quelldatei 1, Pfad 2 (Länge 13): kein Syncmer aus der Teilmenge     -> Stück 13
+//  Quelldatei 2, Pfad 3 (Länge 17): 7 (Pos. 2), 8 (Pos. 4), 9 (Pos. 6) -> Stücke 2, 2, 2, 11
+//  Quelldatei 2, Pfad 4 (Länge 15): 10 (Pos. 2), 11 (Pos. 3)          -> Stücke 2, 1, 12
 static const string SMALL_DISTANCES =
-	"1\t4\t5\n"
-	"3\t2\t8\n"
-	"3\t2\t9\n"
-	"4\t1\t11\n";
+	"source_id\tdistance\tcount\n"
+	"1\t13\t1\n" "1\t11\t1\n" "1\t4\t1\n" "1\t2\t1\n"
+	"2\t12\t1\n" "2\t11\t1\n" "2\t2\t4\n" "2\t1\t1\n";
+
+// small_subset_empty.tsv enthält keine Syncmere -> jeder Pfad ist ein einziges Stück (seine Länge)
+static const string SMALL_DISTANCES_EMPTY_SUBSET =
+	"source_id\tdistance\tcount\n"
+	"1\t17\t1\n" "1\t13\t1\n"
+	"2\t17\t1\n" "2\t15\t1\n";
+
+// small_start_at_zero.1path: wie small.1path, aber Syncmer 3 in Pfad 1 liegt auf Pos. 0 statt 2
+//  -> kein Stück vor dem 1. Syncmer, Pfad 1 ergibt die Stücke 6, 11 (statt 2, 4, 11)
+static const string START_AT_ZERO_DISTANCES =
+	"source_id\tdistance\tcount\n"
+	"1\t13\t1\n" "1\t11\t1\n" "1\t6\t1\n"
+	"2\t12\t1\n" "2\t11\t1\n" "2\t2\t4\n" "2\t1\t1\n";
+
+// Summe distance * count pro Quelldatei aus einer Distanz-Ausgabedatei
+static map<long long, long long> total_length_per_source(const string& filename) {
+	map<long long, long long> totals;
+	istringstream in(read_file(filename));
+	string header;
+	getline(in, header);
+	long long source, distance, count;
+	while (in >> source >> distance >> count) totals[source] += distance * count;
+	return totals;
+}
 
 TEST_CASE("Test syncmerstats::get_max: khash file without t lines.") {
 	string filename = data_path("small_no_t_lines.1khash");
@@ -168,6 +198,41 @@ TEST_CASE("Test syncmerstats::compute_syncmer_distances_from_paths") {
 		string out = output_path("distances.tsv");
 		REQUIRE(compute_syncmer_distances_from_paths(path, khash, subset, out) == 0);
 		CHECK(read_file(out) == SMALL_DISTANCES);
+	}
+
+	SUBCASE("pieces of each source file add up to its total path length") {
+		string out = output_path("distances_totals.tsv");
+		REQUIRE(compute_syncmer_distances_from_paths(path, khash, subset, out) == 0);
+		map<long long, long long> totals = total_length_per_source(out);
+		CHECK(totals.size() == 2);
+		CHECK(totals[1] == 17 + 13);
+		CHECK(totals[2] == 17 + 15);
+	}
+
+	SUBCASE("empty syncmer set: every path is a single piece") {
+		string empty = data_path("small_subset_empty.tsv");
+		string out = output_path("distances_empty_set.tsv");
+		REQUIRE(compute_syncmer_distances_from_paths(path, khash, empty, out) == 0);
+		CHECK(read_file(out) == SMALL_DISTANCES_EMPTY_SUBSET);
+	}
+
+	SUBCASE("no piece before a syncmer at position 0") {
+		string zero = data_path("small_start_at_zero.1path");
+		string out = output_path("distances_start_at_zero.tsv");
+		REQUIRE(compute_syncmer_distances_from_paths(zero, khash, subset, out) == 0);
+		CHECK(read_file(out) == START_AT_ZERO_DISTANCES);
+	}
+
+	SUBCASE("paths not ordered by source file") {
+		string unordered = data_path("small_unordered.1path");
+		string out = output_path("distances_unordered.tsv");
+		CHECK(compute_syncmer_distances_from_paths(unordered, khash, subset, out) == 1);
+	}
+
+	SUBCASE("o line without preceding P line") {
+		string broken = data_path("small_o_without_p.1path");
+		string out = output_path("distances_o_without_p.tsv");
+		CHECK(compute_syncmer_distances_from_paths(broken, khash, subset, out) == 1);
 	}
 
 	SUBCASE("missing path file") {

@@ -83,7 +83,7 @@ TEST_CASE("Test commands::compute_distances") {
 		string out = output_path("cli_distances.tsv");
 		Args args({"syncmer-toolkit", "distances", path, khash, subset, out});
 		CHECK(compute_distances(args.argc(), args.data()) == 0);
-		CHECK(file_exists(out));
+		CHECK(read_file(out).rfind("source_id\tdistance\tcount\n", 0) == 0);
 	}
 
 	SUBCASE("too few arguments") {

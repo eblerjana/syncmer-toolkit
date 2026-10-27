@@ -20,9 +20,12 @@ Manually changed files:
 | `small_repeats.1path` | Path 3: `z 3 -7 -8 -9` → `z 3 3 -8 -8` | syncmer present in multiple source files (3), non-unique syncmer (8) |
 | `small_unordered.1path` | Path 3: `P 17 2 1` → `P 17 3 1` | Paths not ordered by source file |
 | `small_o_without_z.1path` | removed first `z`- line  | `o`-line without `z`-line |
+| `small_start_at_zero.1path` | Pfad 1: `o 3 2 4 6` → `o 3 0 4 6` | Distanzen: kein Stück vor einem Syncmer auf Position 0 |
+| `small_o_without_p.1path` | Zeile `P 13 1 2` entfernt (Pfad 1 hat dadurch zwei `z`/`o`-Paare) | Distanzen: `o`-Zeile ohne zugehörige `P`-Zeile |
 | `small_no_t_lines.1khash` | removed all `t`-, `S`-, `L`-, `C`- and `M`- lines | khash-file without `t`-line |
 
 ## Syncmere subsets for `distances`
 
 - `small_subset.tsv` contains syncmeres 3, 5, 7, 8, 9, 10 and 11.
+- `small_subset_empty.tsv` enthält nur die Kopfzeile, also keine Syncmere.
 - `small_subset_invalid.tsv` contains ID 12 which is larger than the number of syncmers (11).
