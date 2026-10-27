@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <cassert>
+#include <map>
 #include "syncmerstats.hpp"
 
 #include "syng_wrapper.hpp"
@@ -449,10 +450,41 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 		return 1;
 	}
 
-	long long int path_id = 1; 
+	// header
+	outfile << "source_id\tdistance\tcount\n";
+
+	long long int path_len = -1;
+	long long int source_id = -1;
+
+	// histogram of distances for the current source file (over all its paths)
+	map<long long int, unsigned long long int, greater<long long int>> hist;
+
+	// writes the histogram of the current source file and clears it
+	auto flush_hist = [&]() {
+		for (auto& [d, c] : hist) outfile << source_id << "\t" << d << "\t" << c << "\n";
+		hist.clear();
+	};
 
 	while(line_read) {
 		switch(ipath->lineType) {
+			case 'P': {
+				// get source file number from the P line
+				long long int new_source_id = oneInt(ipath, 1);
+				if (new_source_id != source_id) {
+					if (new_source_id < source_id) {
+						cerr << "Error: paths in input file are not ordered by source file." << endl;
+						oneSchemaDestroy(schema);
+						oneFileClose(ipath);
+						outfile.close();
+						return 1;
+					}
+					// finish previous source file before switching
+					if (source_id != -1) flush_hist();
+					source_id = new_source_id;
+				}
+				path_len = oneInt(ipath, 0);
+				break;
+			}
 			case 'z': {
 				n_sync = oneLen(ipath);
 				syncs = oneIntList(ipath);
@@ -473,6 +505,15 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 				
 				// keep track of position of previous syncmer
 				long long int prev_pos = -1;
+
+				if (path_len < 0) {
+					cerr << "Error: no P line read before the o line." << endl;
+					oneSchemaDestroy(schema);
+					oneFileClose(ipath);
+					outfile.close();
+					return 1;
+				}
+
 				// iterate through syncmers on current path
 				for (long long int i = 0; i < n_sync; ++i) {
 					long long int sync_id = std::abs(syncs[i]);
@@ -489,13 +530,20 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 
 					if (is_present[sync_id]) {
 						// syncmer is in subset, so record its distance to previous syncmer
-						if (prev_pos != -1) {
-							outfile << path_id << "\t" << pos - prev_pos << "\t" << sync_id  << "\n";
+						if (prev_pos == -1) {
+							if (pos > 0) ++hist[pos];
+						} else {
+							++hist[pos - prev_pos];
 						}
 						prev_pos = pos;
 					}
 				}
-				path_id += 1;
+
+				// make sure to capture piece after last syncmer all the way to the end
+				long long tail = (prev_pos == -1) ? path_len : path_len - prev_pos;
+				if (tail > 0) ++hist[tail];
+
+				path_len = -1;
 				n_sync = 0;
 				syncs = nullptr;
 				break;
@@ -506,6 +554,8 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 	}
 
 	cerr << "Close open files and destroy schema ..." << endl;
+	// write the histogram of the last source file
+	if (source_id != -1) flush_hist();
 	outfile.close();
 	oneFileClose(ipath);
 	oneSchemaDestroy(schema);
