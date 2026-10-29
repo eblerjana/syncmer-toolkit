@@ -299,7 +299,7 @@ TEST_CASE("Test syncmerstats::compute_syncmer_query_from_paths") {
 		CHECK(read_file(out) ==
 			"syncmer_ID\tposition\tcount\tsequence\n"
 			"3\t2\t1\tggctcgcta\n"
-			"5\t6\t1\tcgctacgat\n");
+			"-5\t6\t1\tcgctacgat\n");
 	}
 
 	SUBCASE("name-based addressing on a file with I lines; all syncmers reverse-traversed") {
@@ -308,9 +308,9 @@ TEST_CASE("Test syncmerstats::compute_syncmer_query_from_paths") {
 		REQUIRE(compute_syncmer_query_from_paths(named, khash, subset, seq2fa, region, out) == 0);
 		CHECK(read_file(out) ==
 			"syncmer_ID\tposition\tcount\tsequence\n"
-			"7\t2\t1\tgcctcgctt\n"
-			"8\t4\t1\tctcgcttcg\n"
-			"9\t6\t1\tcgcttcgat\n");
+			"-7\t2\t1\tgcctcgctt\n"
+			"-8\t4\t1\tctcgcttcg\n"
+			"-9\t6\t1\tcgcttcgat\n");
 	}
 
 	SUBCASE("the same sequence name on a different source file resolves to a different path") {
@@ -320,7 +320,7 @@ TEST_CASE("Test syncmerstats::compute_syncmer_query_from_paths") {
 		CHECK(read_file(out) ==
 			"syncmer_ID\tposition\tcount\tsequence\n"
 			"3\t2\t1\tggctcgcta\n"
-			"5\t6\t1\tcgctacgat\n");
+			"-5\t6\t1\tcgctacgat\n");
 	}
 
 	SUBCASE("region before any syncmer on the path: header-only output") {
