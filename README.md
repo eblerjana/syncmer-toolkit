@@ -28,9 +28,24 @@ syncmer-toolkit query <.1path file> <.1khash file> <unique-syncmers.tsv> <fasta 
 
 Computes a histogram over all "unique" syncmeres that occur at most once per input file provided to syng to build the graph. In other words, each such syncmere is allowed to occur at most once across all paths that are contained in the same input file. The histogram then counts in how many files such syncmeres are seen.
 
+Arguments:
+- `<.1path file>` or `<.1gbwt file>`: ``.1path`` or ``.1gwt`` files produced by syng.
+- `<.1khash file>`: ``.1khash`` file produced by syng.
+- `<outname>`: name of the output file TSV file, with columns `syncmer_ID` and `total_count`.
+
+
+Currently, running this command with the `.1gbwt` file seems very slow, as the traversal of paths in the GBWT takes a lot of time. If available, use the `.1path` file instead.
+
+
 ### distances
 
-For the subset of unique syncmers, this command parses the ``.1path`` file again to determine the distances between subsequent syncmeres along the paths.  
+For the subset of unique syncmers, this command parses the ``.1path`` file again to determine the distances between subsequent syncmeres along the paths. For each source file, it then outputs a histogram of distances.
+
+Arguments:
+- `<.1path file>`: ``.1path`` file produced by syng.
+- `<.1khash file>`: ``.1khash`` file produced by syng.
+- `<unique-syncmers.tsv>`:  the `<outname>_syncmers.tsv` file produced by `histogram`.
+- `<outname>`: name of the output file TSV file, with columns `source_id`, `distance`, `count`.
 
 ### query
 
