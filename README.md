@@ -63,3 +63,13 @@ Arguments:
 - If the graph has no stored sequence names for that FASTA file, `seqid` must instead be given as the sequence's 1-based position within the file (e.g. `2:1000-2000` for the second sequence in that FASTA file).
 
 If a syncmer is traversed in reverse orientation by the path, `sequence` is reported as the reverse complement.
+
+
+## Visualizing results
+
+There are some plotting scripts that can be used to visualize results:
+
+``` bat
+python3 scripts/plot_syncmer_stats.py `<outname>_histogram.tsv` <outname.pdf>
+python3 scripts/plot_nx_curve.py `<outname>_syncmers.tsv` <outname.pdf>
+```
