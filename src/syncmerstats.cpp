@@ -790,7 +790,7 @@ int compute_syncmer_query_from_paths (string& pathfile_path, string& khashfile_p
 						if ((sync_id >= (long long int) sync_count.size()) || (sync_count[sync_id] < 0)) continue;
 
 						char* seq = kmerHashSeq(kh, signed_id, nullptr);
-						outfile << sync_id << "\t" << pos << "\t" << sync_count[sync_id] << "\t" << seq << "\n";
+						outfile << signed_id << "\t" << pos << "\t" << sync_count[sync_id] << "\t" << seq << "\n";
 					}
 					done = true;
 				}
