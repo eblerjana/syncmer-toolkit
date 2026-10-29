@@ -70,6 +70,6 @@ If a syncmer is traversed in reverse orientation by the path, `sequence` is repo
 There are some plotting scripts that can be used to visualize results:
 
 ``` bat
-python3 scripts/plot_syncmer_stats.py `<outname>_histogram.tsv` <outname.pdf>
-python3 scripts/plot_nx_curve.py `<outname>_syncmers.tsv` <outname.pdf>
+python3 scripts/plot_syncmer_stats.py <outname>_histogram.tsv <outname.pdf>
+python3 scripts/plot_nx_curve.py <outname>_syncmers.tsv <outname.pdf>
 ```
