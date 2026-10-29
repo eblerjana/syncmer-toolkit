@@ -101,3 +101,43 @@ TEST_CASE("Test commands::compute_distances") {
 		CHECK(compute_distances(args.argc(), args.data()) == 1);
 	}
 }
+
+TEST_CASE("Test commands::compute_query") {
+	string path = data_path("small.1path");
+	string khash = data_path("small.1khash");
+	string subset = data_path("small_subset.tsv");
+	string fasta = "seq.fa";
+	string region = "1:0-17";
+
+	SUBCASE("valid input") {
+		string out = output_path("cli_query.tsv");
+		Args args({"syncmer-toolkit", "query", path, khash, subset, fasta, region, out});
+		CHECK(compute_query(args.argc(), args.data()) == 0);
+		CHECK(read_file(out).rfind("syncmer_ID\tposition\tcount\tsequence\n", 0) == 0);
+	}
+
+	SUBCASE("too few arguments") {
+		Args args({"syncmer-toolkit", "query", path, khash, subset, fasta, region});
+		CHECK(compute_query(args.argc(), args.data()) == 1);
+	}
+
+	SUBCASE("too many arguments") {
+		Args args({"syncmer-toolkit", "query", path, khash, subset, fasta, region, output_path("cli_query_extra.tsv"), "extra"});
+		CHECK(compute_query(args.argc(), args.data()) == 1);
+	}
+
+	SUBCASE("path file cannot be opened") {
+		Args args({"syncmer-toolkit", "query", data_path("non-existent.1path"), khash, subset, fasta, region, output_path("cli_query_missing_path.tsv")});
+		CHECK(compute_query(args.argc(), args.data()) == 1);
+	}
+
+	SUBCASE("khash file cannot be opened") {
+		Args args({"syncmer-toolkit", "query", path, data_path("non-existent.1khash"), subset, fasta, region, output_path("cli_query_missing_khash.tsv")});
+		CHECK(compute_query(args.argc(), args.data()) == 1);
+	}
+
+	SUBCASE("unknown fasta filename") {
+		Args args({"syncmer-toolkit", "query", path, khash, subset, "doesnotexist.fa", region, output_path("cli_query_unknown_fasta.tsv")});
+		CHECK(compute_query(args.argc(), args.data()) == 1);
+	}
+}

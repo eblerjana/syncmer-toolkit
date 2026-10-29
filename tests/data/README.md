@@ -23,6 +23,23 @@ Manually changed files:
 | `small_start_at_zero.1path` | Pfad 1: `o 3 2 4 6` → `o 3 0 4 6` | Distanzen: kein Stück vor einem Syncmer auf Position 0 |
 | `small_o_without_p.1path` | Zeile `P 13 1 2` entfernt (Pfad 1 hat dadurch zwei `z`/`o`-Paare) | Distanzen: `o`-Zeile ohne zugehörige `P`-Zeile |
 | `small_no_t_lines.1khash` | removed all `t`-, `S`-, `L`-, `C`- and `M`- lines | khash-file without `t`-line |
+| `small_with_names.1path` | added an `I` line (sequence name) after each `P` line | `query`: matching a region by sequence name instead of by index |
+
+### `small_with_names.1path`
+
+Same paths as `small.1path`, but each path now has an `I` line giving its sequence name. The names are
+deliberately reused across the two source files, to test that name matching is scoped per source file
+(by `source_id`), not matched globally:
+
+| Source file | Path (seq. index) | Name | Length | Syncmers from `small_subset.tsv` |
+|---|---|---|---|---|
+| `seq.fa` (source 1) | 1 | `chr1` | 17 | 3 (pos. 2), 5 (pos. 6) |
+| `seq.fa` (source 1) | 2 | `chr2` | 13 | none |
+| `seq2.fa` (source 2) | 1 | `chr1` | 17 | 7 (pos. 2), 8 (pos. 4), 9 (pos. 6) |
+| `seq2.fa` (source 2) | 2 | `chr2` | 15 | 10 (pos. 2), 11 (pos. 3) |
+
+`small.1path` itself has no `I` lines and remains the fixture for testing `query`'s index-based fallback
+(e.g. seq.fa's first path is addressed as `1:...`, matching its "sequence number in file" from the `P` line).
 
 ## Syncmere subsets for `distances`
 

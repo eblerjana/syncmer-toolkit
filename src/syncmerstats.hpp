@@ -12,6 +12,7 @@ long long int get_max(std::string& khash_filename);
 int compute_syncmer_stats_from_paths (std::string& pathfile_path, std::string& khashfile_path, std::string& outfile_path);
 int compute_syncmer_stats_from_gbwt (std::string& gbwtfile_path, std::string& khashfile_path, std::string& outfile_path);
 int compute_syncmer_distances_from_paths (std::string& pathfile_path, std::string& khashfile_path, std::string& syncmerset_path, std::string& outfile_path);
+int compute_syncmer_query_from_paths (std::string& pathfile_path, std::string& khashfile_path, std::string& syncmerset_path, std::string& fasta_filename, std::string& region, std::string& outfile_path);
 
 
 

@@ -270,3 +270,148 @@ TEST_CASE("Test syncmerstats::compute_syncmer_distances_from_paths") {
 		CHECK(compute_syncmer_distances_from_paths(path, khash, subset, out) == 1);
 	}
 }
+
+// small.1path has no I lines, so its paths are addressed by their 1-based "sequence number in
+// file" (the third field of the P line). small_with_names.1path is the same data but with an I
+// line (sequence name) added to each path - see tests/data/README.md. Both fixtures share the
+// same syncmer content, so expected outputs below apply to whichever fixture matches the region.
+//
+//  seq.fa  (source 1), path 1/"chr1" (len 17): z = 3, -4, -5 ; o = 2, 4, 6
+//  seq.fa  (source 1), path 2/"chr2" (len 13): z = -6        ; o = 2
+//  seq2.fa (source 2), path 1/"chr1" (len 17): z = -7, -8, -9; o = 2, 4, 6
+//  seq2.fa (source 2), path 2/"chr2" (len 15): z = -10, 11   ; o = 2, 3
+//
+// small_subset.tsv contains syncmers 3, 5, 7, 8, 9, 10, 11 (all with count 1); syncmers 4, 6
+// are not in the subset even though they lie on these paths.
+TEST_CASE("Test syncmerstats::compute_syncmer_query_from_paths") {
+	string path = data_path("small.1path");
+	string named = data_path("small_with_names.1path");
+	string khash = data_path("small.1khash");
+	string subset = data_path("small_subset.tsv");
+	string seqfa = "seq.fa";
+	string seq2fa = "seq2.fa";
+
+	SUBCASE("index-based addressing on a file with no I lines; forward and reverse orientation") {
+		// covers: happy path via index fallback, forward-traversed syncmer 3, reverse-traversed syncmer 5
+		string out = output_path("query_index_based.tsv");
+		string region = "1:0-17";
+		REQUIRE(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 0);
+		CHECK(read_file(out) ==
+			"syncmer_ID\tposition\tcount\tsequence\n"
+			"3\t2\t1\tggctcgcta\n"
+			"5\t6\t1\tcgctacgat\n");
+	}
+
+	SUBCASE("name-based addressing on a file with I lines; all syncmers reverse-traversed") {
+		string out = output_path("query_named.tsv");
+		string region = "chr1:0-17";
+		REQUIRE(compute_syncmer_query_from_paths(named, khash, subset, seq2fa, region, out) == 0);
+		CHECK(read_file(out) ==
+			"syncmer_ID\tposition\tcount\tsequence\n"
+			"7\t2\t1\tgcctcgctt\n"
+			"8\t4\t1\tctcgcttcg\n"
+			"9\t6\t1\tcgcttcgat\n");
+	}
+
+	SUBCASE("the same sequence name on a different source file resolves to a different path") {
+		string out = output_path("query_named_other_source.tsv");
+		string region = "chr1:0-17";
+		REQUIRE(compute_syncmer_query_from_paths(named, khash, subset, seqfa, region, out) == 0);
+		CHECK(read_file(out) ==
+			"syncmer_ID\tposition\tcount\tsequence\n"
+			"3\t2\t1\tggctcgcta\n"
+			"5\t6\t1\tcgctacgat\n");
+	}
+
+	SUBCASE("region before any syncmer on the path: header-only output") {
+		string out = output_path("query_before.tsv");
+		string region = "1:0-1";
+		REQUIRE(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 0);
+		CHECK(read_file(out) == "syncmer_ID\tposition\tcount\tsequence\n");
+	}
+
+	SUBCASE("region after all syncmers on the path: header-only output") {
+		string out = output_path("query_after.tsv");
+		string region = "1:7-17";
+		REQUIRE(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 0);
+		CHECK(read_file(out) == "syncmer_ID\tposition\tcount\tsequence\n");
+	}
+
+	SUBCASE("syncmer inside the region but absent from the subset file is excluded") {
+		// syncmer 4 sits at position 4 on path 1, inside [3,5), but is not in small_subset.tsv
+		string out = output_path("query_not_in_subset.tsv");
+		string region = "1:3-5";
+		REQUIRE(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 0);
+		CHECK(read_file(out) == "syncmer_ID\tposition\tcount\tsequence\n");
+	}
+
+	SUBCASE("unknown fasta filename") {
+		string out = output_path("query_unknown_fasta.tsv");
+		string region = "1:0-17";
+		string unknown_fasta = "doesnotexist.fa";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, unknown_fasta, region, out) == 1);
+	}
+
+	SUBCASE("unknown sequence index on a file with no I lines") {
+		string out = output_path("query_unknown_index.tsv");
+		string region = "99:0-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("unknown sequence name on a file with I lines") {
+		string out = output_path("query_unknown_name.tsv");
+		string region = "chrX:0-17";
+		CHECK(compute_syncmer_query_from_paths(named, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("non-numeric seqid against a file with no I lines") {
+		string out = output_path("query_non_numeric_seqid.tsv");
+		string region = "chr1:0-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("malformed region: missing colon") {
+		string out = output_path("query_malformed_colon.tsv");
+		string region = "0-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("malformed region: non-integer start") {
+		string out = output_path("query_malformed_start.tsv");
+		string region = "1:abc-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("malformed region: start >= end") {
+		string out = output_path("query_malformed_order.tsv");
+		string region = "1:17-5";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("missing path file") {
+		string missing = data_path("non-existent.1path");
+		string out = output_path("query_missing_path.tsv");
+		string region = "1:0-17";
+		CHECK(compute_syncmer_query_from_paths(missing, khash, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("missing khash file") {
+		string missing = data_path("non-existent.1khash");
+		string out = output_path("query_missing_khash.tsv");
+		string region = "1:0-17";
+		CHECK(compute_syncmer_query_from_paths(path, missing, subset, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("missing syncmer set file") {
+		string missing = data_path("non-existent.tsv");
+		string out = output_path("query_missing_set.tsv");
+		string region = "1:0-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, missing, seqfa, region, out) == 1);
+	}
+
+	SUBCASE("output file cannot be created") {
+		string out = output_path("non-existent-dir/query.tsv");
+		string region = "1:0-17";
+		CHECK(compute_syncmer_query_from_paths(path, khash, subset, seqfa, region, out) == 1);
+	}
+}

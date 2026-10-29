@@ -129,3 +129,47 @@ int compute_distances(int argc, char* argv[]) {
 	// compute distances
 	return compute_syncmer_distances_from_paths(sourcefile_path, khashfile_path, syncmerset_path, outfile_path);
 }
+
+int compute_query(int argc, char* argv[]) {
+
+	string usage = "Usage:\tsyncmer-toolkit query <.1path file> <.1khash file> <unique-syncmers.tsv> <fasta filename> <seqid:start-end> <outname>\n";
+
+	if (argc < 8) {
+		cerr << usage << endl;
+		cerr << "Error: Too few arguments provided." << endl;
+		return 1;
+	}
+
+	if (argc > 8) {
+		cerr << usage << endl;
+		cerr << "Error: Too many arguments provided." << endl;
+		return 1;
+	}
+
+	string sourcefile_path = argv[2];
+	string khashfile_path = argv[3];
+	string syncmerset_path = argv[4];
+	string fasta_filename = argv[5];
+	string region = argv[6];
+	string outfile_path = argv[7];
+
+	// make sure that 1path and 1khash files can be opened
+	try {
+		check_open_file(sourcefile_path, "path");
+		check_open_file(khashfile_path, "khash");
+	} catch (const runtime_error& e) {
+		cerr << e.what();
+		return 1;
+	}
+
+	cerr << "Running program with the following files:" << endl;
+	cerr << "-----------------------------------------" << endl;
+	cerr << "path file:\t" << sourcefile_path << endl;
+	cerr << "khash file:\t" << khashfile_path << endl;
+	cerr << "syncmerset file:\t" << syncmerset_path << endl;
+	cerr << "fasta file:\t" << fasta_filename << endl;
+	cerr << "region:\t" << region << endl << endl;
+
+	// run the query
+	return compute_syncmer_query_from_paths(sourcefile_path, khashfile_path, syncmerset_path, fasta_filename, region, outfile_path);
+}

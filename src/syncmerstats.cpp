@@ -561,3 +561,267 @@ int compute_syncmer_distances_from_paths (string& pathfile_path, string& khashfi
 	oneSchemaDestroy(schema);
 	return 0;
 }
+
+
+int compute_syncmer_query_from_paths (string& pathfile_path, string& khashfile_path, string& syncmerset_path, string& fasta_filename, string& region, string& outfile_path) {
+
+	// parses a string strictly as an integer: fails if empty or if any trailing characters remain
+	auto parse_int_strict = [](const string& s, long long int& val) -> bool {
+		if (s.empty()) return false;
+		try {
+			size_t pos;
+			val = stoll(s, &pos);
+			return pos == s.size();
+		} catch (...) {
+			return false;
+		}
+	};
+
+	// parse region: <seqid>:<start>-<end>
+	cerr << "Parsing region ..." << endl;
+	size_t colon_pos = region.find(':');
+	size_t dash_pos = (colon_pos == string::npos) ? string::npos : region.find('-', colon_pos + 1);
+	if (colon_pos == string::npos || colon_pos == 0 || dash_pos == string::npos) {
+		cerr << "Error: region must be of the form <seqid>:<start>-<end>." << endl;
+		return 1;
+	}
+
+	string seqid = region.substr(0, colon_pos);
+	long long int start = -1, end = -1;
+	if (!parse_int_strict(region.substr(colon_pos + 1, dash_pos - colon_pos - 1), start) ||
+	    !parse_int_strict(region.substr(dash_pos + 1), end)) {
+		cerr << "Error: region start and end must be integers." << endl;
+		return 1;
+	}
+	if (start < 0 || end < 0 || start >= end) {
+		cerr << "Error: region start must be >= 0 and less than end." << endl;
+		return 1;
+	}
+
+	long long int seqid_as_index = -1;
+	bool seqid_is_int = parse_int_strict(seqid, seqid_as_index);
+
+	// open the path file
+	cerr << "Opening path file for reading ..." << endl;
+	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
+	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
+	if (!ipath) {
+		cerr << "Error: could not open 1path file." << endl;
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	// resolve the fasta filename to a source_id via the embedded reference list
+	cerr << "Resolving fasta filename against the 1path file's source references ..." << endl;
+	long long int wanted_source_id = -1;
+	int n_refs = oneReferenceCount(ipath);
+	for (int i = 0; i < n_refs; ++i) {
+		if (fasta_filename == ipath->reference[i].filename) {
+			wanted_source_id = ipath->reference[i].count;
+			break;
+		}
+	}
+	if (wanted_source_id < 0) {
+		cerr << "Error: fasta file " << fasta_filename << " not found among the source files recorded in the 1path file. Available files:" << endl;
+		for (int i = 0; i < n_refs; ++i) {
+			cerr << "\t" << ipath->reference[i].filename << endl;
+		}
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	// open the khash file and load the actual syncmer sequences
+	cerr << "Loading syncmer sequences from khash file ..." << endl;
+	OneSchema *khash_schema = oneSchemaCreateFromText (schemaText);
+	OneFile* okhash = oneFileOpenRead(khashfile_path.data(), khash_schema, "khash", 1);
+	if (!okhash) {
+		cerr << "Error: could not open 1khash file." << endl;
+		oneSchemaDestroy(khash_schema);
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+	// kmerHashReadOneFile() uses oneGoto('t', 1) to jump straight to the 't' line, but that
+	// relies on a binary index entry that is not written for singleton object line types
+	// (only one 't' line ever exists) - so we scan to it sequentially instead, the same way
+	// get_max() above already does, and then replicate the rest of kmerHashReadOneFile's logic.
+	bool t_line_read = oneReadLine(okhash);
+	while (t_line_read && okhash->lineType != 't') {
+		t_line_read = oneReadLine(okhash);
+	}
+	if (!t_line_read) {
+		cerr << "Error: khash file does not contain any t lines." << endl;
+		oneFileClose(okhash);
+		oneSchemaDestroy(khash_schema);
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	KmerHash* kh = kmerHashCreate((U64) 1 << oneInt(okhash, 2), (int) oneInt(okhash, 1));
+	kh->max = oneInt(okhash, 0);
+	U64* dna = kh->pack + kh->plen; // packseq(kh, 1): first slot is reserved, syncmer ids are 1-based
+	while (oneReadLine(okhash) && okhash->lineType == 'S') {
+		memcpy(dna, oneDNA2bit(okhash), oneLen(okhash) >> 2);
+		dna += oneLen(okhash) >> 5;
+	}
+	oneFileClose(okhash);
+	oneSchemaDestroy(khash_schema);
+	long long int nSyncmers = kh->max;
+
+	// parse the unique-syncmer subset file into a dense count lookup; -1 means "not in subset"
+	cerr << "Reading the unique syncmer subset file ..." << endl;
+	vector<long long int> sync_count(nSyncmers + 1, -1);
+	ifstream infile;
+	infile.open(syncmerset_path);
+	if (!infile.good()) {
+		cerr << "Error: file " << syncmerset_path << " cannot be opened." << endl;
+		kmerHashDestroy(kh);
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	string line;
+	while (getline(infile, line)) {
+		stringstream ss(line);
+		string sync_id_str;
+		if (!getline(ss, sync_id_str, '\t')) continue;
+		if (sync_id_str.rfind("syncmer_ID", 0) == 0) continue; // header line
+
+		long long int sync_id = -1;
+		{ stringstream ss_sync(sync_id_str); ss_sync >> sync_id; }
+		if ((sync_id < 1) || (sync_id > nSyncmers)) {
+			cerr << "Error: encountered syncmer ID that is larger than the number of syncmers." << endl;
+			infile.close();
+			kmerHashDestroy(kh);
+			oneFileClose(ipath);
+			oneSchemaDestroy(schema);
+			return 1;
+		}
+
+		string count_str;
+		long long int count = 0;
+		if (getline(ss, count_str, '\t')) {
+			stringstream ss_count(count_str);
+			ss_count >> count;
+		}
+		sync_count[sync_id] = count;
+	}
+	infile.close();
+
+	// open the output file
+	ofstream outfile;
+	outfile.open(outfile_path);
+	if (!outfile.good()) {
+		cerr << "Error: output file cannot be opened." << endl;
+		kmerHashDestroy(kh);
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+	outfile << "syncmer_ID\tposition\tcount\tsequence\n";
+
+	// scan the path file for the one path matching wanted_source_id and seqid
+	cerr << "Scanning the path file for the matching sequence ..." << endl;
+	bool line_read = oneReadLine(ipath);
+
+	long long int cur_source = -1;
+	long long int cur_seq_idx = -1;
+	bool is_target = false;
+	bool has_name_this_path = false;
+	bool any_names_for_source = false;
+	bool done = false;
+
+	long long int n_sync = 0;
+	long long int n_lens = 0;
+	long long int* syncs = nullptr;
+	long long int* positions = nullptr;
+
+	while (line_read && !done) {
+		switch (ipath->lineType) {
+			case 'P': {
+				cur_source = oneInt(ipath, 1);
+				cur_seq_idx = oneInt(ipath, 2);
+				is_target = false;
+				has_name_this_path = false;
+				syncs = nullptr;
+				break;
+			}
+			case 'I': {
+				if (cur_source == wanted_source_id) {
+					has_name_this_path = true;
+					any_names_for_source = true;
+					string name(oneString(ipath), oneLen(ipath));
+					if (name == seqid) is_target = true;
+				}
+				break;
+			}
+			case 'z': {
+				n_sync = oneLen(ipath);
+				syncs = oneIntList(ipath);
+				if ((cur_source == wanted_source_id) && !is_target && !has_name_this_path &&
+				    seqid_is_int && (seqid_as_index == cur_seq_idx)) {
+					is_target = true;
+				}
+				break;
+			}
+			case 'o': {
+				n_lens = oneLen(ipath);
+				positions = oneIntList(ipath);
+
+				if ((syncs == nullptr) || (n_sync != n_lens)) {
+					cerr << "Error: no matching z line read before this o line." << endl;
+					outfile.close();
+					kmerHashDestroy(kh);
+					oneFileClose(ipath);
+					oneSchemaDestroy(schema);
+					return 1;
+				}
+
+				if (is_target) {
+					for (long long int i = 0; i < n_sync; ++i) {
+						long long int signed_id = syncs[i];
+						long long int sync_id = std::abs(signed_id);
+						long long int pos = std::abs(positions[i]);
+
+						if ((pos < start) || (pos >= end)) continue;
+						if ((sync_id >= (long long int) sync_count.size()) || (sync_count[sync_id] < 0)) continue;
+
+						char* seq = kmerHashSeq(kh, signed_id, nullptr);
+						outfile << sync_id << "\t" << pos << "\t" << sync_count[sync_id] << "\t" << seq << "\n";
+					}
+					done = true;
+				}
+				break;
+			}
+			default:
+				break;
+		}
+		if (!done) line_read = oneReadLine(ipath);
+	}
+
+	outfile.close();
+	kmerHashDestroy(kh);
+	oneFileClose(ipath);
+	oneSchemaDestroy(schema);
+
+	if (!done) {
+		if (!any_names_for_source) {
+			if (!seqid_is_int) {
+				cerr << "Error: the 1path file has no stored sequence names (no I lines) for this source file; "
+				     << "seqid must be given as a 1-based sequence index, but '" << seqid << "' is not a valid integer." << endl;
+			} else {
+				cerr << "Error: no sequence with index " << seqid_as_index << " found for fasta file " << fasta_filename
+				     << " (this 1path file has no stored sequence names)." << endl;
+			}
+		} else {
+			cerr << "Error: no sequence named '" << seqid << "' found for fasta file " << fasta_filename << "." << endl;
+		}
+		return 1;
+	}
+
+	cerr << "Wrote syncmer query results to " << outfile_path << endl;
+	return 0;
+}
