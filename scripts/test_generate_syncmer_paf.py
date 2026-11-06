@@ -1,3 +1,5 @@
+import sys
+import subprocess
 import unittest
 import tempfile
 from pathlib import Path
@@ -117,6 +119,16 @@ class TestHaplotypeIndex(unittest.TestCase):
 		self.assertRaises(RuntimeError, haplotype_index.get_syncmer, 30)
 		self.assertFalse(haplotype_index.contains_syncmer("nonexistent"))
 
+	def test_haplotype_index_reverse_length_too_small(self):
+		"""
+		A haplotype_len that does not cover the full extent (position + len(sequence))
+		of the last syncmer in the file must raise, instead of silently producing a
+		negative position.
+		"""
+		self.assertRaises(RuntimeError, HaplotypeIndex, self.syncmer_file, self.hap_len - 1, True)
+		# self.hap_len is exactly the minimum valid value, so this must NOT raise
+		HaplotypeIndex(self.syncmer_file, self.hap_len, True)
+
 
 class TestFindMem(unittest.TestCase):
 
@@ -230,6 +242,32 @@ class TestFindMem(unittest.TestCase):
 		self.assertTrue(mem3 == expected_mem3[::-1])
 		self.assertTrue(mem_sequence3 == reverse_complement(expected_mem_sequence3))
 
+	def test_find_mem_sequence_mismatch(self):
+		"""
+		If the two haplotypes disagree about the sequence of the (shared-ID) starting
+		syncmer - which would also mean its length differs, since unequal-length
+		strings can never be equal - find_mem must fail loudly rather than silently
+		returning a wrong MEM. Note: the explicit "kmer sizes ... do not match"
+		RuntimeError further down in find_mem is actually unreachable for this via
+		this entry point under normal (assertion-enabled) execution, because the
+		"assert ...get_seq(syncmer_id) == ...get_seq(syncmer_id)" check right above it
+		always fires first for the starting syncmer - any length mismatch is also a
+		content mismatch. What actually gets raised today is an AssertionError.
+		"""
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			f1 = Path(tmp_dir) / "h1.tsv"
+			f2 = Path(tmp_dir) / "h2.tsv"
+			with open(f1, 'w') as f:
+				f.write("syncmer_ID\tposition\tcount\tsequence\n")
+				f.write("999\t10\t1\tAAAAAAAAAA\n")
+			with open(f2, 'w') as f:
+				f.write("syncmer_ID\tposition\tcount\tsequence\n")
+				f.write("999\t10\t1\tAAAAA\n")
+
+			haplotype_index1 = HaplotypeIndex(f1)
+			haplotype_index2 = HaplotypeIndex(f2)
+			self.assertRaises(AssertionError, find_mem, haplotype_index1, haplotype_index2, "999")
+
 
 class TestGeneratePAF(unittest.TestCase):
 
@@ -257,6 +295,128 @@ class TestGeneratePAF(unittest.TestCase):
 			for line in open(output_file, 'r'):
 				computed_lines.append(line.strip())
 			self.assertTrue(expected_lines == computed_lines)
+
+	def test_generate_paf_reverse_strand(self):
+		"""
+		When haplotype 1 is reversed, the strand column must be "-", and (since matching
+		requires the syncmer IDs, including sign, to agree) haplotype 2 must be reversed
+		too for any MEM to be found at all.
+		"""
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file1, self.hap_len1, True)
+		haplotype_index2 = HaplotypeIndex(self.syncmer_file2, self.hap_len2, True)
+
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			output_file = Path(tmp_dir) / "output.paf"
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, self.hap_len2)
+
+			expected_lines = [
+				"sample1#hap1#chr1\t34985804\t0\t274\t-\tsample1#hap2#chr1\t34976900\t38\t312\t274\t274\t255\tcg:Z:274M",
+				"sample1#hap1#chr1\t34985804\t385\t904\t-\tsample1#hap2#chr1\t34976900\t423\t942\t519\t519\t255\tcg:Z:519M",
+			]
+			computed_lines = []
+			for line in open(output_file, 'r'):
+				computed_lines.append(line.strip())
+			self.assertTrue(computed_lines == expected_lines)
+			for line in computed_lines:
+				self.assertTrue(line.split("\t")[4] == "-")
+
+	def test_generate_paf_empty_haplotype(self):
+		"""
+		generate_paf must still create the output file (empty) when one of the
+		haplotypes has no syncmers at all, instead of not creating it.
+		"""
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file1)
+
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			empty_file = Path(tmp_dir) / "empty.tsv"
+			with open(empty_file, 'w') as f:
+				f.write("syncmer_ID\tposition\tcount\tsequence\n")
+			haplotype_index_empty = HaplotypeIndex(empty_file)
+			self.assertTrue(haplotype_index_empty.get_length() == 0)
+
+			output_file = Path(tmp_dir) / "output.paf"
+			generate_paf(haplotype_index1, haplotype_index_empty, output_file, "sample1", "chr1", self.hap_len1, 0)
+
+			self.assertTrue(output_file.exists())
+			self.assertTrue(open(output_file, 'r').read() == "")
+
+	def test_generate_paf_no_shared_syncmers(self):
+		"""
+		Two non-empty haplotypes that do not share any syncmer at all must still
+		produce an (empty) output file, with generate_paf's main loop advancing
+		all the way through haplotype 1 without ever finding a MEM.
+		"""
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file1)
+
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			disjoint_file = Path(tmp_dir) / "disjoint.tsv"
+			with open(disjoint_file, 'w') as f:
+				f.write("syncmer_ID\tposition\tcount\tsequence\n")
+				f.write("999999991\t5\t1\tAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n")
+				f.write("999999992\t80\t1\tCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC\n")
+			haplotype_index2 = HaplotypeIndex(disjoint_file)
+			self.assertTrue(haplotype_index2.get_length() == 2)
+
+			output_file = Path(tmp_dir) / "output.paf"
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, 200)
+
+			self.assertTrue(output_file.exists())
+			self.assertTrue(open(output_file, 'r').read() == "")
+
+
+class TestCLI(unittest.TestCase):
+	"""
+	Exercises the actual command-line entry point (__main__/argparse), rather than
+	importing functions directly - this is the only way to catch wiring bugs in the
+	argument parser itself (e.g. a typo'd parser method that only fails when the
+	script is actually run, not when its functions are imported).
+	"""
+
+	def setUp(self):
+		self.script = HERE / "generate_syncmer_paf.py"
+		self.syncmer_file1 = DATA_FOLDER / "test_syncmers_hap1.tsv"
+		self.syncmer_file2 = DATA_FOLDER / "test_syncmers_hap2.tsv"
+
+	def test_cli_forward(self):
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			output_file = Path(tmp_dir) / "output.paf"
+			result = subprocess.run(
+				[sys.executable, str(self.script),
+				 "-syncmersH1", str(self.syncmer_file1),
+				 "-syncmersH2", str(self.syncmer_file2),
+				 "-chromosome", "chr1",
+				 "-lenH1", "34985804",
+				 "-lenH2", "34976900",
+				 "-outfile", str(output_file),
+				 "-sample", "sample1"],
+				capture_output=True, text=True,
+			)
+			self.assertTrue(result.returncode == 0, msg=result.stderr)
+
+			expected_lines = []
+			for line in open(DATA_FOLDER / "expected-paf.paf", 'r'):
+				expected_lines.append(line.strip())
+			computed_lines = []
+			for line in open(output_file, 'r'):
+				computed_lines.append(line.strip())
+			self.assertTrue(computed_lines == expected_lines)
+
+	def test_cli_reverse_flag_does_not_crash(self):
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			output_file = Path(tmp_dir) / "output.paf"
+			result = subprocess.run(
+				[sys.executable, str(self.script),
+				 "-syncmersH1", str(self.syncmer_file1),
+				 "-syncmersH2", str(self.syncmer_file2),
+				 "-chromosome", "chr1",
+				 "-lenH1", "34985804",
+				 "-lenH2", "34976900",
+				 "-outfile", str(output_file),
+				 "--reverse"],
+				capture_output=True, text=True,
+			)
+			self.assertTrue(result.returncode == 0, msg=result.stderr)
+			self.assertTrue(output_file.exists())
 
 
 if __name__ == "__main__":
