@@ -30,7 +30,8 @@ class TestHaplotypeIndex(unittest.TestCase):
 
 	def setUp(self):
 		self.syncmer_file = DATA_FOLDER / "test_syncmers_hap1.tsv"
-		self.hap_len = 34985800
+		# must be >= (position + len(sequence)) of the last syncmer in the file (34985804)
+		self.hap_len = 34985804
 
 	def test_haplotype_index_forward(self):
 		"""
@@ -79,7 +80,9 @@ class TestHaplotypeIndex(unittest.TestCase):
 				continue
 			fields = line.strip().split()
 			expected_ids.append(fields[0][1:] if fields[0].startswith('-') else "-" + fields[0] )
-			expected_positions.append(str(self.hap_len - int(fields[1])))
+			# a syncmer spanning [p, p+k) on the forward strand spans [L-p-k, L-p) on the
+			# reverse-complement strand, so its start there is L-p-k, not L-p
+			expected_positions.append(str(self.hap_len - int(fields[1]) - len(fields[3])))
 			expected_seqs.append(reverse_complement(fields[3]))
 		expected_ids = expected_ids[::-1]
 		expected_positions = expected_positions[::-1]
@@ -119,7 +122,8 @@ class TestFindMem(unittest.TestCase):
 
 	def setUp(self):
 		self.syncmer_file1 = DATA_FOLDER / "test_syncmers_hap1.tsv"
-		self.hap_len1 = 34985800
+		# must be >= (position + len(sequence)) of the last syncmer in the file (34985804)
+		self.hap_len1 = 34985804
 		self.syncmer_file2 = DATA_FOLDER / "test_syncmers_hap2.tsv"
 		self.hap_len2 = 34976900
 		self.expected_mem = DATA_FOLDER / "expected-mem.txt"
@@ -231,7 +235,8 @@ class TestGeneratePAF(unittest.TestCase):
 
 	def setUp(self):
 		self.syncmer_file1 = DATA_FOLDER / "test_syncmers_hap1.tsv"
-		self.hap_len1 = 34985800
+		# must be >= (position + len(sequence)) of the last syncmer in the file (34985804)
+		self.hap_len1 = 34985804
 		self.syncmer_file2 = DATA_FOLDER / "test_syncmers_hap2.tsv"
 		self.hap_len2 = 34976900
 		self.expected_mem = DATA_FOLDER / "expected-mem.txt"

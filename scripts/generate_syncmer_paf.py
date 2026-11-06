@@ -17,35 +17,49 @@ class HaplotypeIndex:
 	def __init__(self, syncmer_file, haplotype_len=-1, reverse=False):
 		self._syncmers = []
 		self._syncmer_to_pos = defaultdict(lambda: [None, None, None])
+		self._reversed = reverse
 
 		syncmer_idx = 0
-		for line in open(syncmer_file, 'r'):
-			if line.startswith("syncmer_ID"):
-				continue
-			fields = line.strip().split()
+		with open(syncmer_file, 'r') as infile:
+			for line in infile:
+				if line.startswith("syncmer_ID"):
+					continue
+				fields = line.strip().split()
 
-			if reverse:
-				# reverse orientation of the syncmer_id
-				syncmer_id = fields[0][1:] if fields[0].startswith("-") else "-" + fields[0]
-				self._syncmers.append(syncmer_id)
-				assert not syncmer_id in self._syncmer_to_pos
-				# total length minus position
-				pos = haplotype_len - int(fields[1])
-				# reverse complement of syncmer sequence
-				sequence = reverse_complement(fields[3])
-				assert not syncmer_id in self._syncmer_to_pos
-				self._syncmer_to_pos[syncmer_id] = [syncmer_idx, pos, sequence]
-			else:
-				self._syncmers.append(fields[0])
-				assert not fields[0] in self._syncmer_to_pos
-				self._syncmer_to_pos[fields[0]] = [syncmer_idx, int(fields[1]), fields[3]]
-			syncmer_idx += 1
+				if reverse:
+					# reverse orientation of the syncmer_id
+					syncmer_id = fields[0][1:] if fields[0].startswith("-") else "-" + fields[0]
+					self._syncmers.append(syncmer_id)
+					assert not syncmer_id in self._syncmer_to_pos
+					# a syncmer spanning [p, p+k) on the forward strand spans [L-p-k, L-p)
+					# on the reverse-complement strand, so its start there is L-p-k, not L-p
+					kmer_size = len(fields[3])
+					if int(fields[1]) + kmer_size > haplotype_len:
+						raise RuntimeError(
+							f"HaplotypeIndex: syncmer {fields[0]} at position {fields[1]} with "
+							f"length {kmer_size} extends beyond the given haplotype_len {haplotype_len}."
+						)
+					pos = haplotype_len - int(fields[1]) - kmer_size
+					# reverse complement of syncmer sequence
+					sequence = reverse_complement(fields[3])
+					self._syncmer_to_pos[syncmer_id] = [syncmer_idx, pos, sequence]
+				else:
+					self._syncmers.append(fields[0])
+					assert not fields[0] in self._syncmer_to_pos
+					self._syncmer_to_pos[fields[0]] = [syncmer_idx, int(fields[1]), fields[3]]
+				syncmer_idx += 1
 
 		# if reverse is true, need to adjust syncmer_idx
 		if reverse:
 			self._syncmers = self._syncmers[::-1]
 			for syncmer in self._syncmer_to_pos:
 				self._syncmer_to_pos[syncmer][0] = self.get_length() - self._syncmer_to_pos[syncmer][0] - 1
+
+	def is_reversed(self):
+		"""
+		Check if this haplotype has been reversed.
+		"""
+		return self._reversed
 
 
 	def get_pos(self, syncmer_id):
@@ -191,12 +205,10 @@ def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample, chromosome, len
 	"""
 	Given two haplotypes, find MEMs and output them in PAF format.
 	"""
-	if (syncmers_h1.get_length() > 0) and (syncmers_h2.get_length() > 0):
-
-		with open(outfile_name, 'w') as outfile:
+	with open(outfile_name, 'w') as outfile:
+		if (syncmers_h1.get_length() > 0) and (syncmers_h2.get_length() > 0):
 
 			cur_syncmer = syncmers_h1.get_syncmer(0)
-			cur_idx = 0
 
 			while True:
 				# look for MEM starting at cur_syncmer in both haplotypes
@@ -207,7 +219,7 @@ def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample, chromosome, len
 					query_len = lenH1
 					query_start = syncmers_h1.get_pos(mem[0])
 					query_end = query_start + len(mem_sequence)
-					strand = "+"
+					strand = "-" if syncmers_h1.is_reversed() else "+"
 					target_name = sample + "#hap2#" + chromosome
 					target_len = lenH2
 					target_start = syncmers_h2.get_pos(mem[0])
@@ -240,7 +252,7 @@ if __name__== "__main__":
 	parser.add_argument('-chromosome', metavar="CHROMOSOME", required=True, help='Which chromosome the interval is located on.')
 	parser.add_argument('-lenH1', metavar="LEN_H1", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 1.')
 	parser.add_argument('-lenH2', metavar="LEN_H2", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 2.')
-	parser.add_flag("--reverse", action='store_true', default=False, help='Reverse first haplotype.')
+	parser.add_argument("--reverse", action='store_true', default=False, help='Reverse first haplotype.')
 	parser.add_argument('-outfile', metavar="OUTFILE", required=True, help="Name of the output file.")
 	parser.add_argument('-sample', metavar="SAMPLE", required=False, default="", help='Name of the sample (to be specified in output)')
 	args = parser.parse_args()
