@@ -187,47 +187,70 @@ def find_mem(haplotype_index1, haplotype_index2, syncmer_id):
 	return mem, mem_sequence
 
 
+def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample, chromosome, lenH1, lenH2):
+	"""
+	Given two haplotypes, find MEMs and output them in PAF format.
+	"""
+	if (syncmers_h1.get_length() > 0) and (syncmers_h2.get_length() > 0):
+
+		with open(outfile_name, 'w') as outfile:
+
+			cur_syncmer = syncmers_h1.get_syncmer(0)
+			cur_idx = 0
+
+			while True:
+				# look for MEM starting at cur_syncmer in both haplotypes
+				mem, mem_sequence = find_mem(syncmers_h1, syncmers_h2, cur_syncmer)
+				if len(mem) > 0:
+					# write PAF line
+					query_name = sample + "#hap1#" + chromosome
+					query_len = lenH1
+					query_start = syncmers_h1.get_pos(mem[0])
+					query_end = query_start + len(mem_sequence)
+					strand = "+"
+					target_name = sample + "#hap2#" + chromosome
+					target_len = lenH2
+					target_start = syncmers_h2.get_pos(mem[0])
+					target_end = target_start + len(mem_sequence)
+					residue_matches = str(len(mem_sequence))
+					alignment_len = residue_matches
+					mapping_qual = "255"
+					cigar = "cg:Z:" + str(len(mem_sequence)) + "M"
+					outfile.write("\t".join([query_name, str(query_len), str(query_start), str(query_end), strand, target_name, str(target_len), str(target_start), str(target_end), residue_matches, alignment_len, mapping_qual, cigar]) + "\n")
+					# update current syncmer to the one after the MEM (if exists)
+					if syncmers_h1.is_next_syncmer(mem[-1]):
+						cur_syncmer = syncmers_h1.get_next_syncmer(mem[-1])
+					else:
+						# reached end of haplotype
+						break
+				else:
+					# update current syncmer to next in haplotype
+					if syncmers_h1.is_next_syncmer(cur_syncmer):
+						cur_syncmer = syncmers_h1.get_next_syncmer(cur_syncmer)
+					else:
+						# reached end of haplotype
+						break
+
+
+
 if __name__== "__main__":
 	parser = argparse.ArgumentParser(prog='generate-syncmer-paf.py', description=__doc__)
 	parser.add_argument('-syncmersH1', metavar='SYNCMERS_H1', required=True, help='List of interval syncmers of haplotype 1 output by query command.') 
 	parser.add_argument('-syncmersH2', metavar='SYNCMERS_H2', required=True, help='List of interval syncmers of haplotype 2 output by query command.')
 	parser.add_argument('-chromosome', metavar="CHROMOSOME", required=True, help='Which chromosome the interval is located on.')
+	parser.add_argument('-lenH1', metavar="LEN_H1", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 1.')
+	parser.add_argument('-lenH2', metavar="LEN_H2", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 2.')
+	parser.add_flag("--reverse", action='store_true', default=False, help='Reverse first haplotype.')
+	parser.add_argument('-outfile', metavar="OUTFILE", required=True, help="Name of the output file.")
 	parser.add_argument('-sample', metavar="SAMPLE", required=False, default="", help='Name of the sample (to be specified in output)')
-	parser.add_argument('-reverse', metavar="LEN_H1", type=int, required=False, help='Reverse first haplotype. Needs the total length of the respective chromosome of haplotype 1.')
 	args = parser.parse_args()
 
 	# parse the syncmer files
 	if args.reverse:
-		syncmers_h1 = HaplotypeIndex(args.syncmersH1, args.reverse, True)
+		syncmers_h1 = HaplotypeIndex(args.syncmersH1, args.lenH1, True)
 	else:
 		syncmers_h1 = HaplotypeIndex(args.syncmersH1)
 	syncmers_h2 = HaplotypeIndex(args.syncmersH2)
 
-	if (syncmers_h1.get_length() > 0) and (syncmers_h2.get_length() > 0):
-
-		cur_syncmer = syncmers_h1.get_syncmer(0)
-		cur_idx = 0
-
-		while syncmers_h1.is_next_syncmer(cur_syncmer):
-			# look for MEM starting at cur_syncmer in both haplotypes
-			mem, mem_sequence = find_mem(syncmers_h1, syncmers_h2, cur_syncmer)
-			if len(mem) > 0:
-				# write PAF line
-				query_name = args.sample + "#hap1#" + args.chromosome
-				query_len = len(mem_sequence)
-				query_start = syncmers_h1.get_pos(mem[0])
-				query_end = query_start + query_len
-				strand = "+"
-				target_name = args.sample + "#hap2" + args.chromosome
-				target_len = len(mem_sequence)
-				target_start = syncmers_h2.get_pos(mem[0])
-				target_end = target_start + target_len
-				residue_matches = len(mem_sequence)
-				alignment_len = residue_matches
-				mapping_qual = "255"
-				cigar = "cg:Z:" + len(mem_sequence) + "M"
-				print("\t".join([query_name, query_len, query_start, query_end, strand, target_name, target_len, target_start, target_end, residue_matches, alignment_len, mapping_qual, cigar]))
-
-
-
-
+	# find MEMs and output PAF
+	generate_paf(syncmers_h1, syncmers_h2, args.outfile, args.sample, args.chromosome, args.lenH1, args.lenH2)

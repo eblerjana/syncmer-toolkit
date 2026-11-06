@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -7,6 +8,7 @@ DATA_FOLDER = HERE / "data"
 from generate_syncmer_paf import reverse_complement 
 from generate_syncmer_paf import HaplotypeIndex
 from generate_syncmer_paf import find_mem
+from generate_syncmer_paf import generate_paf
 
 class TestReverseComplement(unittest.TestCase):
 
@@ -169,8 +171,8 @@ class TestFindMem(unittest.TestCase):
 			"61105397",
 			"118792640"
 		]
-		self.assertTrue(mem3 == expected_mem3)
 		expected_mem_sequence3 = "gatgtgggtaaggtgatcctcaaaaccggaaaaatggagctgagtccaaaaaaatctttgaatttcttctgtaagaataaaatgtttgttatatcctggattcatcttagtgaaaggcttggggcaatggatgataaagaatgatgctgtggcaggtcttctgtcgaacctccccctcttccccgctgccatgggttttcaaccatggatagtactacaccctgtgggaggcaattggaaatttgggagggaggagtttggggaggtcacaaca"
+		self.assertTrue(mem3 == expected_mem3)
 		self.assertTrue(mem_sequence3 == expected_mem_sequence3)
 
 
@@ -206,14 +208,50 @@ class TestFindMem(unittest.TestCase):
 		expected_mem_sequence2 = ""
 		for line in open(self.expected_mem, 'r'):
 			expected_mem_sequence2 += line.strip()
-		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "-61105370")
+		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "61105387")
 
-		print(expected_mem2[::-1])
-		print(mem2)
 		self.assertTrue(mem2 == expected_mem2[::-1])
 		self.assertTrue(mem_sequence2 == reverse_complement(expected_mem_sequence2))
 
+		mem3, mem_sequence3 = find_mem(haplotype_index1, haplotype_index2, "-118792640")
+		expected_mem3 = [
+			"61105393",
+			"61105394",
+			"61105395",
+			"-61105396",
+			"-61105397",
+			"-118792640"
+		]
+		expected_mem_sequence3 = "gatgtgggtaaggtgatcctcaaaaccggaaaaatggagctgagtccaaaaaaatctttgaatttcttctgtaagaataaaatgtttgttatatcctggattcatcttagtgaaaggcttggggcaatggatgataaagaatgatgctgtggcaggtcttctgtcgaacctccccctcttccccgctgccatgggttttcaaccatggatagtactacaccctgtgggaggcaattggaaatttgggagggaggagtttggggaggtcacaaca"
+		self.assertTrue(mem3 == expected_mem3[::-1])
+		self.assertTrue(mem_sequence3 == reverse_complement(expected_mem_sequence3))
 
+
+class TestGeneratePAF(unittest.TestCase):
+
+	def setUp(self):
+		self.syncmer_file1 = DATA_FOLDER / "test_syncmers_hap1.tsv"
+		self.hap_len1 = 34985800
+		self.syncmer_file2 = DATA_FOLDER / "test_syncmers_hap2.tsv"
+		self.hap_len2 = 34976900
+		self.expected_mem = DATA_FOLDER / "expected-mem.txt"
+
+	def test_generate_paf(self):
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file1)
+		haplotype_index2 = HaplotypeIndex(self.syncmer_file2)
+
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			output_file = Path(tmp_dir) / "output.paf"
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, self.hap_len2)
+
+			# check if PAF file looks as expected
+			expected_lines = []
+			for line in open(DATA_FOLDER / "expected-paf.paf", 'r'):
+				expected_lines.append(line.strip())
+			computed_lines = []
+			for line in open(output_file, 'r'):
+				computed_lines.append(line.strip())
+			self.assertTrue(expected_lines == computed_lines)
 
 
 if __name__ == "__main__":
