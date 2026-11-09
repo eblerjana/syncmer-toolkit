@@ -185,7 +185,11 @@ def find_mem(haplotype_index1, haplotype_index2, syncmer_id):
 			# sure overlap sizes are consistent between both haplotypes.
 			overlap1 = (haplotype_index1.get_pos(mem[-1]) + kmer_size) - haplotype_index1.get_pos(sync_h1)
 			overlap2 = (haplotype_index2.get_pos(mem[-1]) + kmer_size) - haplotype_index2.get_pos(sync_h1)
-			assert overlap1 == overlap2
+
+			if (overlap1 != overlap2):
+				# same syncmer IDs but different overlap size and thus different
+				# sequences (can happen in repetitive regions), end of MEM
+				break
 			if overlap1 <= 0:
 				# the syncmers are further than the kmer_size apart, end of MEM
 				break

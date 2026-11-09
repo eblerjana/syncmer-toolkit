@@ -140,6 +140,10 @@ class TestFindMem(unittest.TestCase):
 		self.hap_len2 = 34976900
 		self.expected_mem = DATA_FOLDER / "expected-mem.txt"
 
+		self.syncmer_file_repeat1 =  DATA_FOLDER / "test_syncmers_hap1_repeat.tsv"
+		self.syncmer_file_repeat2 =  DATA_FOLDER / "test_syncmers_hap2_repeat.tsv"
+
+
 	def test_find_mem1(self):
 
 		# syncmer is only present in first HT, so no result should be empty
@@ -268,6 +272,30 @@ class TestFindMem(unittest.TestCase):
 			haplotype_index2 = HaplotypeIndex(f2)
 			self.assertRaises(AssertionError, find_mem, haplotype_index1, haplotype_index2, "999")
 
+	def test_find_mem_repeat(self):
+		"""
+        In repetitive areas, it can happen that two haplotypes traverse the same syncmeres,
+        but the overlaps between neighboring syncmers differs. This test checks if
+        the algorithm correctly breaks MEMs at such positions.
+		"""
+
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file_repeat1)
+		haplotype_index2 = HaplotypeIndex(self.syncmer_file_repeat2)
+		mem, mem_sequence = find_mem(haplotype_index1, haplotype_index2, "61117411")
+
+		# only a single syncmer in MEM, as overlaps to next syncmer differs in both files
+		expected_mem1 = ["61117411"]
+		expected_mem_sequence1 = "aaatataaatatttataaaaatatttatataaatatttataaaaatatttatataaatattta"
+		self.assertTrue(mem == expected_mem1)
+		self.assertTrue(mem_sequence == expected_mem_sequence1)
+
+		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "61117414")
+		expected_mem2 = ["61117414", "61117415"]
+		expected_mem_sequence2 = "ttataaaaatatttatataaatatttataaaaatatttatataaatatttataaaaaatataaatattagccatgtttggtggctcacgcctgtaa"
+		self.assertTrue(mem2 == expected_mem2)
+		self.assertTrue(mem_sequence2 == expected_mem_sequence2)
+
+
 
 class TestGeneratePAF(unittest.TestCase):
 
@@ -278,6 +306,12 @@ class TestGeneratePAF(unittest.TestCase):
 		self.syncmer_file2 = DATA_FOLDER / "test_syncmers_hap2.tsv"
 		self.hap_len2 = 34976900
 		self.expected_mem = DATA_FOLDER / "expected-mem.txt"
+
+		self.syncmer_file_repeat1 =  DATA_FOLDER / "test_syncmers_hap1_repeat.tsv"
+		self.syncmer_file_repeat2 =  DATA_FOLDER / "test_syncmers_hap2_repeat.tsv"
+		self.hap_len_repeat1 = 36270000
+		self.hap_len_repeat2 = 36270000
+
 
 	def test_generate_paf(self):
 		haplotype_index1 = HaplotypeIndex(self.syncmer_file1)
@@ -362,6 +396,31 @@ class TestGeneratePAF(unittest.TestCase):
 
 			self.assertTrue(output_file.exists())
 			self.assertTrue(open(output_file, 'r').read() == "")
+
+	def test_generate_paf_repeat(self):
+		"""
+		The haplotypes traverse the same syncmers, but overlaps between
+		syncmers is different and therefore underlying sequences differ.
+		Check if MEM is broken into pieces in such cases.
+		"""
+		haplotype_index1 = HaplotypeIndex(self.syncmer_file_repeat1)
+		haplotype_index2 = HaplotypeIndex(self.syncmer_file_repeat2)
+
+		with tempfile.TemporaryDirectory() as tmp_dir:
+			repeat_output = Path(tmp_dir) / "repeat.paf"
+			generate_paf(haplotype_index1, haplotype_index2, repeat_output, "sample1", "chr9", self.hap_len_repeat1, self.hap_len_repeat2)
+
+			self.assertTrue(repeat_output.exists())
+			computed_lines = []
+			for line in open(repeat_output, 'r'):
+				computed_lines.append(line.strip())
+			self.assertTrue(len(computed_lines) == 2)
+
+			first_mem = "sample1#hap1#chr9\t36270000\t35262222\t35262285\t+\tsample1#hap2#chr9\t36270000\t35271097\t35271160\t63\t63\t255\tcg:Z:63M"
+			second_mem = "sample1#hap1#chr9\t36270000\t35262282\t35262378\t+\tsample1#hap2#chr9\t36270000\t35271133\t35271229\t96\t96\t255\tcg:Z:96M"
+
+			self.assertTrue(first_mem == computed_lines[0])
+			self.assertTrue(second_mem == computed_lines[1])
 
 
 class TestCLI(unittest.TestCase):
