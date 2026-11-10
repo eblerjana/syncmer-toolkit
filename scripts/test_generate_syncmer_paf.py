@@ -319,7 +319,7 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, self.hap_len2)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, self.hap_len2)
 
 			# check if PAF file looks as expected
 			expected_lines = []
@@ -341,7 +341,7 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, self.hap_len2)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, self.hap_len2)
 
 			expected_lines = [
 				"sample1#hap1#chr1\t34985804\t0\t274\t-\tsample1#hap2#chr1\t34976900\t38\t312\t274\t274\t255\tcg:Z:274M",
@@ -369,7 +369,7 @@ class TestGeneratePAF(unittest.TestCase):
 			self.assertTrue(haplotype_index_empty.get_length() == 0)
 
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index_empty, output_file, "sample1", "chr1", self.hap_len1, 0)
+			generate_paf(haplotype_index1, haplotype_index_empty, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, 0)
 
 			self.assertTrue(output_file.exists())
 			self.assertTrue(open(output_file, 'r').read() == "")
@@ -392,7 +392,7 @@ class TestGeneratePAF(unittest.TestCase):
 			self.assertTrue(haplotype_index2.get_length() == 2)
 
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "chr1", self.hap_len1, 200)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, 200)
 
 			self.assertTrue(output_file.exists())
 			self.assertTrue(open(output_file, 'r').read() == "")
@@ -408,7 +408,7 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			repeat_output = Path(tmp_dir) / "repeat.paf"
-			generate_paf(haplotype_index1, haplotype_index2, repeat_output, "sample1", "chr9", self.hap_len_repeat1, self.hap_len_repeat2)
+			generate_paf(haplotype_index1, haplotype_index2, repeat_output, "sample1", "sample1", "chr9", "chr9", self.hap_len_repeat1, self.hap_len_repeat2)
 
 			self.assertTrue(repeat_output.exists())
 			computed_lines = []
@@ -443,11 +443,13 @@ class TestCLI(unittest.TestCase):
 				[sys.executable, str(self.script),
 				 "-syncmersH1", str(self.syncmer_file1),
 				 "-syncmersH2", str(self.syncmer_file2),
-				 "-chromosome", "chr1",
+				 "-chromosomeH1", "chr1",
+				 "-chromosomeH2", "chr1",
 				 "-lenH1", "34985804",
 				 "-lenH2", "34976900",
 				 "-outfile", str(output_file),
-				 "-sample", "sample1"],
+				 "-sampleH1", "sample1",
+				 "-sampleH2", "sample1"],
 				capture_output=True, text=True,
 			)
 			self.assertTrue(result.returncode == 0, msg=result.stderr)
@@ -467,7 +469,8 @@ class TestCLI(unittest.TestCase):
 				[sys.executable, str(self.script),
 				 "-syncmersH1", str(self.syncmer_file1),
 				 "-syncmersH2", str(self.syncmer_file2),
-				 "-chromosome", "chr1",
+				 "-chromosomeH1", "chr1",
+				 "-chromosomeH2", "chr2",
 				 "-lenH1", "34985804",
 				 "-lenH2", "34976900",
 				 "-outfile", str(output_file),

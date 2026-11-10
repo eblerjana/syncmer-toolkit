@@ -205,7 +205,7 @@ def find_mem(haplotype_index1, haplotype_index2, syncmer_id):
 	return mem, mem_sequence
 
 
-def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample, chromosome, lenH1, lenH2):
+def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample1, sample2, chromosome1, chromosome2, lenH1, lenH2):
 	"""
 	Given two haplotypes, find MEMs and output them in PAF format.
 	"""
@@ -219,12 +219,12 @@ def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample, chromosome, len
 				mem, mem_sequence = find_mem(syncmers_h1, syncmers_h2, cur_syncmer)
 				if len(mem) > 0:
 					# write PAF line
-					query_name = sample + "#hap1#" + chromosome
+					query_name = sample1 + "#hap1#" + chromosome1
 					query_len = lenH1
 					query_start = syncmers_h1.get_pos(mem[0])
 					query_end = query_start + len(mem_sequence)
 					strand = "-" if syncmers_h1.is_reversed() else "+"
-					target_name = sample + "#hap2#" + chromosome
+					target_name = sample2 + "#hap2#" + chromosome2
 					target_len = lenH2
 					target_start = syncmers_h2.get_pos(mem[0])
 					target_end = target_start + len(mem_sequence)
@@ -253,12 +253,14 @@ if __name__== "__main__":
 	parser = argparse.ArgumentParser(prog='generate-syncmer-paf.py', description=__doc__)
 	parser.add_argument('-syncmersH1', metavar='SYNCMERS_H1', required=True, help='List of interval syncmers of haplotype 1 output by query command.') 
 	parser.add_argument('-syncmersH2', metavar='SYNCMERS_H2', required=True, help='List of interval syncmers of haplotype 2 output by query command.')
-	parser.add_argument('-chromosome', metavar="CHROMOSOME", required=True, help='Which chromosome the interval is located on.')
+	parser.add_argument('-chromosomeH1', metavar="CHROMOSOME_H1", required=True, help='Which chromosome in sample 1 the interval is located on.')
+	parser.add_argument('-chromosomeH2', metavar="CHROMOSOME_H2", required=True, help='Which chromosome in sample 2 the interval is located on.')
 	parser.add_argument('-lenH1', metavar="LEN_H1", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 1.')
 	parser.add_argument('-lenH2', metavar="LEN_H2", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 2.')
 	parser.add_argument("--reverse", action='store_true', default=False, help='Reverse first haplotype.')
 	parser.add_argument('-outfile', metavar="OUTFILE", required=True, help="Name of the output file.")
-	parser.add_argument('-sample', metavar="SAMPLE", required=False, default="", help='Name of the sample (to be specified in output)')
+	parser.add_argument('-sampleH1', metavar="SAMPLE1", required=False, default="", help='Name of sample 1 (to be specified in output)')
+	parser.add_argument('-sampleH2', metavar="SAMPLE2", required=False, default="", help='Name of sample 2 (to be specified in output)')
 	args = parser.parse_args()
 
 	# parse the syncmer files
@@ -269,4 +271,4 @@ if __name__== "__main__":
 	syncmers_h2 = HaplotypeIndex(args.syncmersH2)
 
 	# find MEMs and output PAF
-	generate_paf(syncmers_h1, syncmers_h2, args.outfile, args.sample, args.chromosome, args.lenH1, args.lenH2)
+	generate_paf(syncmers_h1, syncmers_h2, args.outfile, args.sampleH1, args.sampleH2, args.chromosomeH1, args.chromosomeH2, args.lenH1, args.lenH2)
