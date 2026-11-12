@@ -154,7 +154,7 @@ def find_mem(haplotype_index1, haplotype_index2, syncmer_id):
 	mem_sequence = ""
 
 	if not haplotype_index1.contains_syncmer(syncmer_id) or not haplotype_index2.contains_syncmer(syncmer_id):
-		return mem, mem_sequence
+		return mem, mem_sequence, -1
 	else:
 		mem.append(syncmer_id)
 		assert haplotype_index1.get_seq(syncmer_id) == haplotype_index2.get_seq(syncmer_id)
@@ -202,10 +202,10 @@ def find_mem(haplotype_index1, haplotype_index2, syncmer_id):
 			cur_id = sync_h1
 		else:
 			break
-	return mem, mem_sequence
+	return mem, mem_sequence, kmer_size
 
 
-def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample1, sample2, chromosome1, chromosome2, lenH1, lenH2):
+def generate_paf(syncmers_h1, syncmers_h2, outfile_name, chromosome1, chromosome2, lenH1, lenH2):
 	"""
 	Given two haplotypes, find MEMs and output them in PAF format.
 	"""
@@ -216,17 +216,25 @@ def generate_paf(syncmers_h1, syncmers_h2, outfile_name, sample1, sample2, chrom
 
 			while True:
 				# look for MEM starting at cur_syncmer in both haplotypes
-				mem, mem_sequence = find_mem(syncmers_h1, syncmers_h2, cur_syncmer)
+				mem, mem_sequence, kmer_size = find_mem(syncmers_h1, syncmers_h2, cur_syncmer)
 				if len(mem) > 0:
 					# write PAF line
-					query_name = sample1 + "#hap1#" + chromosome1
+					query_name = chromosome1
 					query_len = lenH1
-					query_start = syncmers_h1.get_pos(mem[0])
+					if syncmers_h1.is_reversed():
+						# get_pos() is in the reverse-complement frame (L - p - k); convert
+						# back to the original forward-strand position for the PAF output
+						query_start = lenH1 - syncmers_h1.get_pos(mem[-1]) - kmer_size
+					else:
+						query_start = syncmers_h1.get_pos(mem[0])
 					query_end = query_start + len(mem_sequence)
 					strand = "-" if syncmers_h1.is_reversed() else "+"
-					target_name = sample2 + "#hap2#" + chromosome2
+					target_name = chromosome2
 					target_len = lenH2
-					target_start = syncmers_h2.get_pos(mem[0])
+					if syncmers_h2.is_reversed():
+						target_start = lenH2 - syncmers_h2.get_pos(mem[-1]) - kmer_size
+					else:
+						target_start = syncmers_h2.get_pos(mem[0])
 					target_end = target_start + len(mem_sequence)
 					residue_matches = str(len(mem_sequence))
 					alignment_len = residue_matches
@@ -259,8 +267,6 @@ if __name__== "__main__":
 	parser.add_argument('-lenH2', metavar="LEN_H2", type=int, required=True, help='Needs the total length of the respective chromosome of haplotype 2.')
 	parser.add_argument("--reverse", action='store_true', default=False, help='Reverse first haplotype.')
 	parser.add_argument('-outfile', metavar="OUTFILE", required=True, help="Name of the output file.")
-	parser.add_argument('-sampleH1', metavar="SAMPLE1", required=False, default="", help='Name of sample 1 (to be specified in output)')
-	parser.add_argument('-sampleH2', metavar="SAMPLE2", required=False, default="", help='Name of sample 2 (to be specified in output)')
 	args = parser.parse_args()
 
 	# parse the syncmer files
@@ -271,4 +277,4 @@ if __name__== "__main__":
 	syncmers_h2 = HaplotypeIndex(args.syncmersH2)
 
 	# find MEMs and output PAF
-	generate_paf(syncmers_h1, syncmers_h2, args.outfile, args.sampleH1, args.sampleH2, args.chromosomeH1, args.chromosomeH2, args.lenH1, args.lenH2)
+	generate_paf(syncmers_h1, syncmers_h2, args.outfile, args.chromosomeH1, args.chromosomeH2, args.lenH1, args.lenH2)

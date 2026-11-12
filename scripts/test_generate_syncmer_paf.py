@@ -149,7 +149,7 @@ class TestFindMem(unittest.TestCase):
 		# syncmer is only present in first HT, so no result should be empty
 		haplotype_index1 = HaplotypeIndex(self.syncmer_file1)
 		haplotype_index2 = HaplotypeIndex(self.syncmer_file2)
-		mem1, mem_sequence1 = find_mem(haplotype_index1, haplotype_index2, "61105364")
+		mem1, mem_sequence1, kmer_size = find_mem(haplotype_index1, haplotype_index2, "61105364")
 		self.assertTrue(mem1 == [])
 		self.assertTrue(mem_sequence1 == "")
 
@@ -177,12 +177,12 @@ class TestFindMem(unittest.TestCase):
 		expected_mem_sequence2 = ""
 		for line in open(self.expected_mem, 'r'):
 			expected_mem_sequence2 += line.strip()
-		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "61105370")
+		mem2, mem_sequence2, kmer_size = find_mem(haplotype_index1, haplotype_index2, "61105370")
 
 		self.assertTrue(mem2 == expected_mem2)
 		self.assertTrue(mem_sequence2 == expected_mem_sequence2)
 
-		mem3, mem_sequence3 = find_mem(haplotype_index1, haplotype_index2, "-61105393")
+		mem3, mem_sequence3, kmer_size = find_mem(haplotype_index1, haplotype_index2, "-61105393")
 		expected_mem3 = [
 			"-61105393",
 			"-61105394",
@@ -200,7 +200,7 @@ class TestFindMem(unittest.TestCase):
 
 		haplotype_index1 = HaplotypeIndex(self.syncmer_file1, self.hap_len1, True)
 		haplotype_index2 = HaplotypeIndex(self.syncmer_file2, self.hap_len2, True)
-		mem1, mem_sequence1 = find_mem(haplotype_index1, haplotype_index2, "-61105364")
+		mem1, mem_sequence1, kmer_size = find_mem(haplotype_index1, haplotype_index2, "-61105364")
 		self.assertTrue(mem1 == [])
 		self.assertTrue(mem_sequence1 == "")
 
@@ -228,12 +228,12 @@ class TestFindMem(unittest.TestCase):
 		expected_mem_sequence2 = ""
 		for line in open(self.expected_mem, 'r'):
 			expected_mem_sequence2 += line.strip()
-		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "61105387")
+		mem2, mem_sequence2, kmer_size = find_mem(haplotype_index1, haplotype_index2, "61105387")
 
 		self.assertTrue(mem2 == expected_mem2[::-1])
 		self.assertTrue(mem_sequence2 == reverse_complement(expected_mem_sequence2))
 
-		mem3, mem_sequence3 = find_mem(haplotype_index1, haplotype_index2, "-118792640")
+		mem3, mem_sequence3, kmer_size = find_mem(haplotype_index1, haplotype_index2, "-118792640")
 		expected_mem3 = [
 			"61105393",
 			"61105394",
@@ -281,7 +281,7 @@ class TestFindMem(unittest.TestCase):
 
 		haplotype_index1 = HaplotypeIndex(self.syncmer_file_repeat1)
 		haplotype_index2 = HaplotypeIndex(self.syncmer_file_repeat2)
-		mem, mem_sequence = find_mem(haplotype_index1, haplotype_index2, "61117411")
+		mem, mem_sequence, kmer_size = find_mem(haplotype_index1, haplotype_index2, "61117411")
 
 		# only a single syncmer in MEM, as overlaps to next syncmer differs in both files
 		expected_mem1 = ["61117411"]
@@ -289,7 +289,7 @@ class TestFindMem(unittest.TestCase):
 		self.assertTrue(mem == expected_mem1)
 		self.assertTrue(mem_sequence == expected_mem_sequence1)
 
-		mem2, mem_sequence2 = find_mem(haplotype_index1, haplotype_index2, "61117414")
+		mem2, mem_sequence2, kmer_size = find_mem(haplotype_index1, haplotype_index2, "61117414")
 		expected_mem2 = ["61117414", "61117415"]
 		expected_mem_sequence2 = "ttataaaaatatttatataaatatttataaaaatatttatataaatatttataaaaaatataaatattagccatgtttggtggctcacgcctgtaa"
 		self.assertTrue(mem2 == expected_mem2)
@@ -319,7 +319,7 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, self.hap_len2)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "chr1", "chr1", self.hap_len1, self.hap_len2)
 
 			# check if PAF file looks as expected
 			expected_lines = []
@@ -341,11 +341,11 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, self.hap_len2)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "chr1", "chr1", self.hap_len1, self.hap_len2)
 
 			expected_lines = [
-				"sample1#hap1#chr1\t34985804\t0\t274\t-\tsample1#hap2#chr1\t34976900\t38\t312\t274\t274\t255\tcg:Z:274M",
-				"sample1#hap1#chr1\t34985804\t385\t904\t-\tsample1#hap2#chr1\t34976900\t423\t942\t519\t519\t255\tcg:Z:519M",
+				"chr1\t34985804\t34985530\t34985804\t-\tchr1\t34976900\t34976588\t34976862\t274\t274\t255\tcg:Z:274M",
+				"chr1\t34985804\t34984900\t34985419\t-\tchr1\t34976900\t34975958\t34976477\t519\t519\t255\tcg:Z:519M",
 			]
 			computed_lines = []
 			for line in open(output_file, 'r'):
@@ -369,7 +369,7 @@ class TestGeneratePAF(unittest.TestCase):
 			self.assertTrue(haplotype_index_empty.get_length() == 0)
 
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index_empty, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, 0)
+			generate_paf(haplotype_index1, haplotype_index_empty, output_file, "chr1", "chr1", self.hap_len1, 0)
 
 			self.assertTrue(output_file.exists())
 			self.assertTrue(open(output_file, 'r').read() == "")
@@ -392,7 +392,7 @@ class TestGeneratePAF(unittest.TestCase):
 			self.assertTrue(haplotype_index2.get_length() == 2)
 
 			output_file = Path(tmp_dir) / "output.paf"
-			generate_paf(haplotype_index1, haplotype_index2, output_file, "sample1", "sample1", "chr1", "chr1", self.hap_len1, 200)
+			generate_paf(haplotype_index1, haplotype_index2, output_file, "chr1", "chr1", self.hap_len1, 200)
 
 			self.assertTrue(output_file.exists())
 			self.assertTrue(open(output_file, 'r').read() == "")
@@ -408,7 +408,7 @@ class TestGeneratePAF(unittest.TestCase):
 
 		with tempfile.TemporaryDirectory() as tmp_dir:
 			repeat_output = Path(tmp_dir) / "repeat.paf"
-			generate_paf(haplotype_index1, haplotype_index2, repeat_output, "sample1", "sample1", "chr9", "chr9", self.hap_len_repeat1, self.hap_len_repeat2)
+			generate_paf(haplotype_index1, haplotype_index2, repeat_output, "chr9", "chr9", self.hap_len_repeat1, self.hap_len_repeat2)
 
 			self.assertTrue(repeat_output.exists())
 			computed_lines = []
@@ -416,8 +416,8 @@ class TestGeneratePAF(unittest.TestCase):
 				computed_lines.append(line.strip())
 			self.assertTrue(len(computed_lines) == 2)
 
-			first_mem = "sample1#hap1#chr9\t36270000\t35262222\t35262285\t+\tsample1#hap2#chr9\t36270000\t35271097\t35271160\t63\t63\t255\tcg:Z:63M"
-			second_mem = "sample1#hap1#chr9\t36270000\t35262282\t35262378\t+\tsample1#hap2#chr9\t36270000\t35271133\t35271229\t96\t96\t255\tcg:Z:96M"
+			first_mem = "chr9\t36270000\t35262222\t35262285\t+\tchr9\t36270000\t35271097\t35271160\t63\t63\t255\tcg:Z:63M"
+			second_mem = "chr9\t36270000\t35262282\t35262378\t+\tchr9\t36270000\t35271133\t35271229\t96\t96\t255\tcg:Z:96M"
 
 			self.assertTrue(first_mem == computed_lines[0])
 			self.assertTrue(second_mem == computed_lines[1])
@@ -447,9 +447,7 @@ class TestCLI(unittest.TestCase):
 				 "-chromosomeH2", "chr1",
 				 "-lenH1", "34985804",
 				 "-lenH2", "34976900",
-				 "-outfile", str(output_file),
-				 "-sampleH1", "sample1",
-				 "-sampleH2", "sample1"],
+				 "-outfile", str(output_file)],
 				capture_output=True, text=True,
 			)
 			self.assertTrue(result.returncode == 0, msg=result.stderr)
