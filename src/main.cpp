@@ -11,7 +11,7 @@ using namespace std;
 int main(int argc, char* argv[]) {
 
 	// parse command line
-	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n\tsyncmer-toolkit distances <.1path file> <.1khash file> <syncmerset> <outname>\n\tsyncmer-toolkit query <.1path file> <.1khash file> <unique-syncmers.tsv> <fasta filename> <seqid:start-end> <outname>\n";
+	string usage = "Usage:\tsyncmer-toolkit histogram <.1path file> <.1khash file> <outname>\n\tsyncmer-toolkit histogram <.1gbwt file> <.1khash file> <outname>\n\tsyncmer-toolkit distances <.1path file> <.1khash file> <syncmerset> <outname>\n\tsyncmer-toolkit query <.1path file> <.1khash file> <unique-syncmers.tsv> <fasta filename> <seqid:start-end> <outname>\n\tsyncmer-toolkit anchors <.1path file> <unique-syncmers.tsv> <reference-fasta-filename> <outname>\n";
 
 	if (argc < 3) {
 		// no arguments provided, just print usage info
@@ -27,9 +27,11 @@ int main(int argc, char* argv[]) {
 		return compute_distances(argc, argv);
 	} else if (program == "query") {
 		return compute_query(argc, argv);
+	} else if (program == "anchors") {
+		return compute_anchors(argc, argv);
 	} else {
 		cerr << usage << "\n" << endl;
-		cerr << "Error: program name must be specified as histogram, distances or query."  << endl;
+		cerr << "Error: program name must be specified as histogram, distances, query or anchors."  << endl;
 		return 1;
 	}
 };

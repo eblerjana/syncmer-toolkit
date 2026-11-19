@@ -8,5 +8,6 @@ void check_open_file(std::string filename, std::string filetype);
 int create_histogram(int argc, char* argv[]);
 int compute_distances(int argc, char* argv[]);
 int compute_query(int argc, char* argv[]);
+int compute_anchors(int argc, char* argv[]);
 
 #endif // COMMANDS_HPP

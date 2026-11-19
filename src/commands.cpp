@@ -173,3 +173,43 @@ int compute_query(int argc, char* argv[]) {
 	// run the query
 	return compute_syncmer_query_from_paths(sourcefile_path, khashfile_path, syncmerset_path, fasta_filename, region, outfile_path);
 }
+
+
+int compute_anchors(int argc, char* argv[]) {
+
+	string usage = "Usage:\tsyncmer-toolkit anchors <.1path file> <unique-syncmers.tsv> <reference-fasta-filename> <outname>\n";
+
+	if (argc < 6) {
+		cerr << usage << endl;
+		cerr << "Error: Too few arguments provided." << endl;
+		return 1;
+	}
+
+	if (argc > 6) {
+		cerr << usage << endl;
+		cerr << "Error: Too many arguments provided." << endl;
+		return 1;
+	}
+
+	string sourcefile_path = argv[2];
+	string syncmerset_path = argv[3];
+	string fasta_filename = argv[4];
+	string outfile_path = argv[5];
+
+	// make sure that 1path file can be opened
+	try {
+		check_open_file(sourcefile_path, "path");
+	} catch (const runtime_error& e) {
+		cerr << e.what();
+		return 1;
+	}
+
+	cerr << "Running program with the following files:" << endl;
+	cerr << "-----------------------------------------" << endl;
+	cerr << "path file:\t" << sourcefile_path << endl;
+	cerr << "syncmerset file:\t" << syncmerset_path << endl;
+	cerr << "reference fasta filename:\t" << fasta_filename << endl;
+
+	// compute anchors
+	return compute_syncmer_anchors_from_paths(sourcefile_path, syncmerset_path, fasta_filename, outfile_path);
+}

@@ -3,6 +3,8 @@
 #include <sstream>
 #include <cassert>
 #include <map>
+#include <unordered_map>
+#include <algorithm>
 #include "syncmerstats.hpp"
 
 #include "syng_wrapper.hpp"
@@ -20,6 +22,27 @@ static char *schemaText =
   "D L 1 8 INT_LIST          locations in the table\n"
   "D C 1 8 INT_LIST          kmer counts\n"
   "D M 1 6 STRING            maximum count in any input - (1..127)\n";
+
+
+struct SyncmerInfo {
+	long long int index = -1;
+	bool is_reverse = false;
+	long long int contig_idx = -1; // index into the list of reference contig names
+	long long int position = -1;
+
+	void print() const {
+		cerr << "SyncmerInfo\t" << "index: " << index << "\t is_reverse: " << is_reverse << "\tcontig_idx: " << contig_idx << "\tposition: " << position << "\t";
+	}
+};
+
+// candidate syncmers of one reference path, collected before indices are assigned
+struct ReferencePath {
+	long long int seq_idx = -1;
+	bool has_name = false;
+	string name = "";
+	vector<pair<long long int, long long int>> syncmers; // (signed syncmer id, position)
+};
+
 
 void increase_syncmer_count(vector<int32_t>& counts, size_t position) {
 	if (counts[position] < 0) {
@@ -823,5 +846,214 @@ int compute_syncmer_query_from_paths (string& pathfile_path, string& khashfile_p
 	}
 
 	cerr << "Wrote syncmer query results to " << outfile_path << endl;
+	return 0;
+}
+
+
+int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerset_path, string& fasta_filename, string& outfile_path) {
+
+	// parses a string strictly as an integer: fails if empty or if any trailing characters remain
+	auto parse_int_strict = [](const string& s, long long int& val) -> bool {
+		if (s.empty()) return false;
+		try {
+			size_t pos;
+			val = stoll(s, &pos);
+			return pos == s.size();
+		} catch (...) {
+			return false;
+		}
+	};
+
+	// open the path file
+	cerr << "Opening path file for reading ..." << endl;
+	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
+	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
+	if (!ipath) {
+		cerr << "Error: could not open 1path file." << endl;
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	// resolve the fasta filename to a source_id via the embedded reference list
+	cerr << "Resolving fasta filename against the 1path file's source references ..." << endl;
+	long long int reference_source_id = -1;
+	int n_refs = oneReferenceCount(ipath);
+	for (int i = 0; i < n_refs; ++i) {
+		if (fasta_filename == ipath->reference[i].filename) {
+			reference_source_id = ipath->reference[i].count;
+			break;
+		}
+	}
+	if (reference_source_id < 0) {
+		cerr << "Error: fasta file " << fasta_filename << " not found among the source files recorded in the 1path file. Available files:" << endl;
+		for (int i = 0; i < n_refs; ++i) {
+			cerr << "\t" << ipath->reference[i].filename << endl;
+		}
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+	
+	// parse the unique-syncmer subset file. Keep track of all syncmers present in all haplotypes
+	cerr << "Reading the unique syncmer subset file ..." << endl;
+	unordered_map<long long int, SyncmerInfo> unique_syncmers;
+	ifstream infile;
+	infile.open(syncmerset_path);
+	if (!infile.good()) {
+		cerr << "Error: file " << syncmerset_path << " cannot be opened." << endl;
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	string line;
+	while (getline(infile, line)) {
+		stringstream ss(line);
+		string sync_id_str;
+		if (!getline(ss, sync_id_str, '\t')) continue;
+		if (sync_id_str.rfind("syncmer_ID", 0) == 0) continue; // header line
+
+		long long int sync_id = -1;
+		string count_str;
+		long long int count = 0;
+		if (!parse_int_strict(sync_id_str, sync_id) || (sync_id < 1) ||
+		    !getline(ss, count_str, '\t') || !parse_int_strict(count_str, count)) {
+			cerr << "Error: malformed line in " << syncmerset_path << ": " << line << endl;
+			infile.close();
+			oneFileClose(ipath);
+			oneSchemaDestroy(schema);
+			return 1;
+		}
+
+		// only keep syncmers present in all haplotypes
+		if (count == n_refs) {
+			unique_syncmers[sync_id] = SyncmerInfo();
+		}
+	}
+	infile.close();
+	cerr << "Read " << unique_syncmers.size() << " unique syncmers present in all haplotypes. " << endl;
+
+
+	/* 
+	* Step 1: parse all paths corresponding to the reference haplotype.
+	* 	  Stores reference syncmers, their positions, orientations and
+	* 	  contig names in the above initialized unique_syncmers map.
+	*/
+
+	// stores syncmers in order of their indices
+	vector<long long int> reference_syncmers_to_index;
+
+	// candidate syncmers of all reference paths, sorted by sequence number in file before assigning indices
+	vector<ReferencePath> reference_paths;
+
+	// scan the path file for all paths of the reference haplotype
+	cerr << "Scanning the path file for all reference paths ..." << endl;
+	bool line_read = oneReadLine(ipath);
+
+	long long int cur_source = -1;
+	long long int cur_seq_idx = -1;
+	bool is_target = false;
+
+	long long int n_sync = 0;
+	long long int n_lens = 0;
+	long long int* syncs = nullptr;
+	long long int* positions = nullptr;
+
+	while (line_read) {
+		switch (ipath->lineType) {
+			case 'P': {
+				cur_source = oneInt(ipath, 1);
+				is_target = (cur_source == reference_source_id);
+				cur_seq_idx = oneInt(ipath, 2);
+				if (is_target) {
+					ReferencePath ref_path;
+					ref_path.seq_idx = cur_seq_idx;
+					reference_paths.push_back(ref_path);
+				}
+				syncs = nullptr;
+				break;
+			}
+			case 'I': {
+				if (is_target) {
+					reference_paths.back().has_name = true;
+					reference_paths.back().name = string(oneString(ipath), oneLen(ipath));
+				}
+				break;
+			}
+			case 'z': {
+				n_sync = oneLen(ipath);
+				syncs = oneIntList(ipath);
+				break;
+			}
+			case 'o': {
+				n_lens = oneLen(ipath);
+				positions = oneIntList(ipath);
+
+				if ((syncs == nullptr) || (n_sync != n_lens)) {
+					cerr << "Error: no matching z line read before this o line." << endl;
+					oneFileClose(ipath);
+					oneSchemaDestroy(schema);
+					return 1;
+				}
+
+				if (is_target) {
+					for (long long int i = 0; i < n_sync; ++i) {
+						long long int sync_id = std::abs(syncs[i]);
+						if (unique_syncmers.find(sync_id) != unique_syncmers.end()) {
+							reference_paths.back().syncmers.push_back({syncs[i], positions[i]});
+						}
+					}
+				}
+				break;
+			}
+			default:
+				break;
+		}
+		line_read = oneReadLine(ipath);
+	}
+
+	// assign indices in the order of the reference paths' sequence numbers in file
+	stable_sort(reference_paths.begin(), reference_paths.end(),
+		[](const ReferencePath& a, const ReferencePath& b) { return a.seq_idx < b.seq_idx; });
+
+	// names of the reference contigs, in reference order
+	vector<string> contig_names;
+
+	for (const ReferencePath& ref_path : reference_paths) {
+		contig_names.push_back(ref_path.has_name ? ref_path.name : to_string(ref_path.seq_idx));
+		for (const auto& [signed_id, position] : ref_path.syncmers) {
+			long long int sync_id = std::abs(signed_id);
+			SyncmerInfo& info = unique_syncmers[sync_id];
+			if (info.index != -1) {
+				cerr << "Error: syncmer " << sync_id << " occurs more than once in the reference haplotype, but is listed as unique in " << syncmerset_path << "." << endl;
+				oneFileClose(ipath);
+				oneSchemaDestroy(schema);
+				return 1;
+			}
+			info.index = reference_syncmers_to_index.size();
+			info.is_reverse = (signed_id < 0);
+			info.contig_idx = contig_names.size() - 1;
+			info.position = position;
+			reference_syncmers_to_index.push_back(sync_id);
+		}
+	}
+
+	// candidates not found on the reference (only possible if the syncmer file does not match the graph) keep index -1 and are ignored
+	if (reference_syncmers_to_index.size() != unique_syncmers.size()) {
+		cerr << "Warning: " << unique_syncmers.size() - reference_syncmers_to_index.size() << " syncmers present in all haplotypes according to " << syncmerset_path << " were not found on the reference haplotype." << endl;
+	}
+
+	// initialize anchors to all candidates on the reference, indexed by their reference index
+	vector<bool> anchors(reference_syncmers_to_index.size(), true);
+
+	/*
+	 * Step 2: Parse all other haplotypes and determine anchors.
+	 *         Syncmers with index -1 (not on the reference) must be skipped.
+	 * */
+
+	// TODO
+
+	oneFileClose(ipath);
+	oneSchemaDestroy(schema);
 	return 0;
 }
