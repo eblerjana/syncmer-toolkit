@@ -4,7 +4,6 @@
 #include <cassert>
 #include <map>
 #include <unordered_map>
-#include <algorithm>
 #include "syncmerstats.hpp"
 
 #include "syng_wrapper.hpp"
@@ -33,14 +32,6 @@ struct SyncmerInfo {
 	void print() const {
 		cerr << "SyncmerInfo\t" << "index: " << index << "\t is_reverse: " << is_reverse << "\tcontig_idx: " << contig_idx << "\tposition: " << position << "\t";
 	}
-};
-
-// candidate syncmers of one reference path, collected before indices are assigned
-struct ReferencePath {
-	long long int seq_idx = -1;
-	bool has_name = false;
-	string name = "";
-	vector<pair<long long int, long long int>> syncmers; // (signed syncmer id, position)
 };
 
 
@@ -897,6 +888,7 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 	// parse the unique-syncmer subset file. Keep track of all syncmers present in all haplotypes
 	cerr << "Reading the unique syncmer subset file ..." << endl;
 	unordered_map<long long int, SyncmerInfo> unique_syncmers;
+	long long int max_candidate_id = 0;
 	ifstream infile;
 	infile.open(syncmerset_path);
 	if (!infile.good()) {
@@ -928,10 +920,23 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 		// only keep syncmers present in all haplotypes
 		if (count == n_refs) {
 			unique_syncmers[sync_id] = SyncmerInfo();
+			max_candidate_id = max(max_candidate_id, sync_id);
 		}
 	}
 	infile.close();
 	cerr << "Read " << unique_syncmers.size() << " unique syncmers present in all haplotypes. " << endl;
+
+	// bit vector marking candidates, so that most syncmers on the paths (non-candidates) are rejected without a hash lookup
+	vector<bool> is_candidate(max_candidate_id + 1, false);
+	for (const auto& entry : unique_syncmers) {
+		is_candidate[entry.first] = true;
+	}
+
+	// returns the candidate info for an (unsigned) syncmer ID, or nullptr if it is not a candidate
+	auto find_candidate = [&](long long int sync_id) -> SyncmerInfo* {
+		if ((sync_id > max_candidate_id) || !is_candidate[sync_id]) return nullptr;
+		return &unique_syncmers.find(sync_id)->second;
+	};
 
 
 	/* 
@@ -942,9 +947,10 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 
 	// stores syncmers in order of their indices
 	vector<long long int> reference_syncmers_to_index;
+	reference_syncmers_to_index.reserve(unique_syncmers.size());
 
-	// candidate syncmers of all reference paths, sorted by sequence number in file before assigning indices
-	vector<ReferencePath> reference_paths;
+	// names of the reference contigs, in the order they appear in the path file
+	vector<string> contig_names;
 
 	// scan the path file for all paths of the reference haplotype
 	cerr << "Scanning the path file for all reference paths ..." << endl;
@@ -966,17 +972,15 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 				is_target = (cur_source == reference_source_id);
 				cur_seq_idx = oneInt(ipath, 2);
 				if (is_target) {
-					ReferencePath ref_path;
-					ref_path.seq_idx = cur_seq_idx;
-					reference_paths.push_back(ref_path);
+					// contig name defaults to the sequence number in file, replaced if the path has an I line
+					contig_names.push_back(to_string(cur_seq_idx));
 				}
 				syncs = nullptr;
 				break;
 			}
 			case 'I': {
 				if (is_target) {
-					reference_paths.back().has_name = true;
-					reference_paths.back().name = string(oneString(ipath), oneLen(ipath));
+					contig_names.back() = string(oneString(ipath), oneLen(ipath));
 				}
 				break;
 			}
@@ -999,9 +1003,19 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 				if (is_target) {
 					for (long long int i = 0; i < n_sync; ++i) {
 						long long int sync_id = std::abs(syncs[i]);
-						if (unique_syncmers.find(sync_id) != unique_syncmers.end()) {
-							reference_paths.back().syncmers.push_back({syncs[i], positions[i]});
+						SyncmerInfo* info = find_candidate(sync_id);
+						if (info == nullptr) continue;
+						if (info->index != -1) {
+							cerr << "Error: syncmer " << sync_id << " occurs more than once in the reference haplotype, but is listed as unique in " << syncmerset_path << "." << endl;
+							oneFileClose(ipath);
+							oneSchemaDestroy(schema);
+							return 1;
 						}
+						info->index = reference_syncmers_to_index.size();
+						info->is_reverse = (syncs[i] < 0);
+						info->contig_idx = contig_names.size() - 1;
+						info->position = positions[i];
+						reference_syncmers_to_index.push_back(sync_id);
 					}
 				}
 				break;
@@ -1012,35 +1026,12 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 		line_read = oneReadLine(ipath);
 	}
 
-	// assign indices in the order of the reference paths' sequence numbers in file
-	stable_sort(reference_paths.begin(), reference_paths.end(),
-		[](const ReferencePath& a, const ReferencePath& b) { return a.seq_idx < b.seq_idx; });
-
-	// names of the reference contigs, in reference order
-	vector<string> contig_names;
-
-	for (const ReferencePath& ref_path : reference_paths) {
-		contig_names.push_back(ref_path.has_name ? ref_path.name : to_string(ref_path.seq_idx));
-		for (const auto& [signed_id, position] : ref_path.syncmers) {
-			long long int sync_id = std::abs(signed_id);
-			SyncmerInfo& info = unique_syncmers[sync_id];
-			if (info.index != -1) {
-				cerr << "Error: syncmer " << sync_id << " occurs more than once in the reference haplotype, but is listed as unique in " << syncmerset_path << "." << endl;
-				oneFileClose(ipath);
-				oneSchemaDestroy(schema);
-				return 1;
-			}
-			info.index = reference_syncmers_to_index.size();
-			info.is_reverse = (signed_id < 0);
-			info.contig_idx = contig_names.size() - 1;
-			info.position = position;
-			reference_syncmers_to_index.push_back(sync_id);
-		}
-	}
-
-	// candidates not found on the reference (only possible if the syncmer file does not match the graph) keep index -1 and are ignored
+	// candidates not found on the reference (only possible if the syncmer file does not match the graph)
 	if (reference_syncmers_to_index.size() != unique_syncmers.size()) {
-		cerr << "Warning: " << unique_syncmers.size() - reference_syncmers_to_index.size() << " syncmers present in all haplotypes according to " << syncmerset_path << " were not found on the reference haplotype." << endl;
+		cerr << "Error: " << unique_syncmers.size() - reference_syncmers_to_index.size() << " syncmers present in all haplotypes according to " << syncmerset_path << " were not found on the reference haplotype." << endl;
+		oneFileClose(ipath);
+		oneSchemaDestroy(schema);
+		return 1;
 	}
 
 	// initialize anchors to all candidates on the reference, indexed by their reference index
