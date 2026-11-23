@@ -3,6 +3,7 @@
 #include <sstream>
 #include <cassert>
 #include <map>
+#include <algorithm>
 #include <unordered_map>
 #include "syncmerstats.hpp"
 
@@ -856,7 +857,7 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 	};
 
 	// open the path file
-	cerr << "Opening path file for reading ..." << endl;
+	cerr << "Opening path file for reading reference paths..." << endl;
 	OneSchema *schema = oneSchemaCreateFromText (syngSchemaText);
 	OneFile* ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
 	if (!ipath) {
@@ -1026,25 +1027,205 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 		line_read = oneReadLine(ipath);
 	}
 
+	// close file here before reading it a second time, just to be sure.
+	oneFileClose(ipath);
+	oneSchemaDestroy(schema);
+
 	// candidates not found on the reference (only possible if the syncmer file does not match the graph)
 	if (reference_syncmers_to_index.size() != unique_syncmers.size()) {
 		cerr << "Error: " << unique_syncmers.size() - reference_syncmers_to_index.size() << " syncmers present in all haplotypes according to " << syncmerset_path << " were not found on the reference haplotype." << endl;
-		oneFileClose(ipath);
-		oneSchemaDestroy(schema);
 		return 1;
 	}
 
 	// initialize anchors to all candidates on the reference, indexed by their reference index
 	vector<bool> anchors(reference_syncmers_to_index.size(), true);
 
+
 	/*
 	 * Step 2: Parse all other haplotypes and determine anchors.
 	 *         Syncmers with index -1 (not on the reference) must be skipped.
 	 * */
 
-	// TODO
+
+	// open the path file again, to parse all non-reference haplotype paths
+	cerr << "Opening path file for reading non-reference paths ..." << endl;
+	schema = oneSchemaCreateFromText (syngSchemaText);
+	ipath = oneFileOpenRead(pathfile_path.data(), schema, "path", 1);
+	if (!ipath) {
+		cerr << "Error: could not open 1path file a second time." << endl;
+		oneSchemaDestroy(schema);
+		return 1;
+	}
+
+	cerr << "Scanning the path file for all non-reference paths ..." << endl;
+	line_read = oneReadLine(ipath);
+	cur_source = -1;
+	cur_seq_idx = -1;
+	is_target = false;
+	syncs = nullptr;
+	n_lens = 0;
+	n_sync = 0;
+
+	while(line_read) {
+		switch (ipath->lineType) {
+			case 'P': {
+				cur_source = oneInt(ipath, 1);
+				is_target = (cur_source != reference_source_id);
+				cur_seq_idx = oneInt(ipath, 2);
+				syncs = nullptr;
+				break;
+			}
+			case 'z': {
+				n_sync = oneLen(ipath);
+				syncs = oneIntList(ipath);
+				break;
+			}
+			case 'o': {
+				n_lens = oneLen(ipath);
+
+				if ((syncs == nullptr) || (n_sync != n_lens)) {
+					cerr << "Error: no matching z line read before this o line." << endl;
+					oneFileClose(ipath);
+					oneSchemaDestroy(schema);
+					return 1;
+				}
+
+				if (is_target) {
+					// path sequence, with unique syncmers translated to reference indices
+					vector<long long int> haplotype_indices(reference_syncmers_to_index.size());
+					vector<bool> orientations_match(reference_syncmers_to_index.size());
+					long long int same_orientation = 0;
+					long long int different_orientation = 0;
+					long long int candidates_read = 0;
+
+					/* (1) first pass of the haplotype, count the number of candidate syncmers with
+					* the same and different orientations compared to reference.
+					* Then, reverse the haplotype if more syncmers have a different orientation
+					*/
+					
+					for (long long int i = 0; i < n_sync; ++i) {
+						long long int syncmer_id = std::abs(syncs[i]);
+						bool is_reversed = (syncs[i] < 0);
+						SyncmerInfo* info = find_candidate(syncmer_id);
+
+						// check if this syncmer is part of the unique syncmer set
+						if (info == nullptr) continue;
+
+						// check if orientation same as in reference path
+						if (is_reversed == info->is_reverse) {
+							same_orientation += 1;
+						} else {
+							different_orientation += 1;
+						}
+
+						if (candidates_read >= haplotype_indices.size()) {
+							// by definition, the number of candidates must be the same in all haplotypes.
+							cerr << "Haplotype contains unique syncmers more than once." << endl;
+							oneFileClose(ipath);
+							oneSchemaDestroy(schema);
+							return 1;
+						}
+
+						haplotype_indices[candidates_read] = info->index;
+						orientations_match[candidates_read] = (is_reversed == info->is_reverse);
+						candidates_read += 1;
+					}
+
+					if (candidates_read != reference_syncmers_to_index.size()) {
+						// there must have been candidate syncmers missing from haplotype
+						cerr << "Haplotype misses some unique synmcers." << endl;
+						oneFileClose(ipath);
+						oneSchemaDestroy(schema);
+						return 1;
+					}
+
+					// reverse the haplotype if orientations do not match and remove syncmers
+					// with different orientations from anchors list
+					bool reverse_haplotype = (different_orientation > same_orientation);
+					if (reverse_haplotype) {
+						cerr << "Reversing path " << cur_seq_idx << " in source file " << cur_source << endl;
+						std::reverse(haplotype_indices.begin(), haplotype_indices.end());
+					}
+					
+					for (long long int i = 0; i < haplotype_indices.size(); ++i) {
+						if (orientations_match[i] == reverse_haplotype) anchors[haplotype_indices[i]] = false;
+					}
+
+
+					/*
+					 * (2) Iterate haplotype (unique syncmer space) and compute running max (from left) and
+					 * min (from right). All positions where min[i] == max[i] are anchor points for this 
+					 * haplotype, all others can be removed from current anchor list.
+					 * */
+
+					cerr << "Determine anchors for path " << cur_seq_idx << " in source file " << cur_source << endl;
+					vector<long long int> maxima(haplotype_indices.size());
+					for (long long int i = 0; i < haplotype_indices.size(); ++i) {
+						// handle first element
+						if (i == 0) {
+							maxima[i] = haplotype_indices[i]; 
+						} else {
+							maxima[i] = std::max(maxima[i-1], haplotype_indices[i]);
+						}
+					}
+
+					long long int cur_idx = haplotype_indices.size() - 1;
+					long long int cur_min = haplotype_indices[cur_idx];
+					for (auto iter = haplotype_indices.rbegin(); iter != haplotype_indices.rend(); ++iter) {
+						cur_min = std::min(cur_min, *iter);
+						bool is_anchor = ((haplotype_indices[cur_idx] == cur_min) && (haplotype_indices[cur_idx] == maxima[cur_idx]));
+						if (!is_anchor) {
+							anchors[haplotype_indices[cur_idx]] = false;
+						}
+						cur_idx -= 1;
+					}
+
+					
+
+				}
+				break;
+			}
+			default:
+				break;
+		}
+		line_read  = oneReadLine(ipath);
+	}
 
 	oneFileClose(ipath);
 	oneSchemaDestroy(schema);
+
+	/*
+	 * (3) Output the list of anchors that are remaining with some additional information
+	 * relative to the reference haplotypes.
+	 */
+
+	cerr << "Writing anchors to output file ..." << endl;
+	ofstream outfile;
+	outfile.open(outfile_path);
+	if (!outfile.good()) {
+		cerr << "Error output file cannot be opened." << endl;
+		return 1;
+	}
+
+	outfile << "syncmer_ID\treference_contig\treference_position" << endl;
+	for (size_t i = 0; i < anchors.size(); ++i) {
+		if (anchors[i]) {
+			// map index back to syncmer
+			long long int sync_id = reference_syncmers_to_index[i];
+			SyncmerInfo* info = find_candidate(sync_id);
+			if (info == nullptr) {
+				cerr << "Error: syncmer does not exist." << endl;
+				return 1;
+			}
+			string contig_name = contig_names[info->contig_idx];
+			long long int position = info->position;
+			if (info->is_reverse) {
+				outfile << "-" << sync_id << "\t" << contig_name << "\t" << position << "\n";
+			} else {
+				outfile << sync_id << "\t" << contig_name << "\t" << position << "\n";
+			}
+		}
+	}
+	outfile.close();
 	return 0;
 }
