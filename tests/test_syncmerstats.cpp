@@ -53,6 +53,9 @@ TEST_CASE("Test syncmerstats::compute_syncmer_anchors_from_paths") {
 	string path = data_path("small.1path");
 	string subset = data_path("small_subset.tsv");
 
+	/* test if issues with missing input files are handled properly
+	 */
+
 	SUBCASE("non-existent reference sequence name") {
 		string out = output_path("non-existent.tsv");
 		string reference = "non-existant";
@@ -63,6 +66,21 @@ TEST_CASE("Test syncmerstats::compute_syncmer_anchors_from_paths") {
 		string out = output_path("non/existent/dir/output.tsv");
 		string reference = "seq.fa";
 		REQUIRE(compute_syncmer_anchors_from_paths(path, subset, reference, out) == 1);
+	}
+
+	SUBCASE("input path file cannot be opened") {
+		string out = output_path("output.tsv");
+		string non_existent_path = "non-existent.1path";
+		string reference = "seq.fa";
+		REQUIRE(compute_syncmer_anchors_from_paths(non_existent_path, subset, reference, out) == 1);
+	}
+
+	SUBCASE("subset file cannot be opened") {
+		string out = output_path("output.tsv");
+		string reference = "seq.fa";
+		string non_existent_subset = "non-existent.tsv";
+		REQUIRE(compute_syncmer_anchors_from_paths(path, non_existent_subset, reference, out) == 1);
+	
 	}
 }
 

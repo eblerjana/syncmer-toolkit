@@ -1171,16 +1171,18 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 
 					// TODO: fix this: handle case where haplotype_indices has length 0.
 
-					long long int cur_idx = haplotype_indices.size() - 1;
-					long long int cur_min = haplotype_indices[cur_idx];
+					if (haplotype_indices.size() > 0) {
+						long long int cur_idx = haplotype_indices.size() - 1;
+						long long int cur_min = haplotype_indices[cur_idx];
 
-					for (auto iter = haplotype_indices.rbegin(); iter != haplotype_indices.rend(); ++iter) {
-						cur_min = std::min(cur_min, *iter);
-						bool is_anchor = ((haplotype_indices[cur_idx] == cur_min) && (haplotype_indices[cur_idx] == maxima[cur_idx]));
-						if (!is_anchor) {
-							anchors[haplotype_indices[cur_idx]] = false;
+						for (auto iter = haplotype_indices.rbegin(); iter != haplotype_indices.rend(); ++iter) {
+							cur_min = std::min(cur_min, *iter);
+							bool is_anchor = ((haplotype_indices[cur_idx] == cur_min) && (haplotype_indices[cur_idx] == maxima[cur_idx]));
+							if (!is_anchor) {
+								anchors[haplotype_indices[cur_idx]] = false;
+							}
+							cur_idx -= 1;
 						}
-						cur_idx -= 1;
 					}
 
 					
