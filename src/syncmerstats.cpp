@@ -1098,7 +1098,6 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 					orientations_match.reserve(reference_syncmers_to_index.size());
 					long long int same_orientation = 0;
 					long long int different_orientation = 0;
-					long long int candidates_read = 0;
 
 					/* (1) first pass of the haplotype, count the number of candidate syncmers with
 					* the same and different orientations compared to reference.
@@ -1130,9 +1129,10 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 					if (reverse_haplotype) {
 						cerr << "Reversing path " << cur_seq_idx << " in source file " << cur_source << endl;
 						std::reverse(haplotype_indices.begin(), haplotype_indices.end());
+						std::reverse(orientations_match.begin(), orientations_match.end());
 					}
 					
-					for (long long int i = 0; i < haplotype_indices.size(); ++i) {
+					for (size_t i = 0; i < haplotype_indices.size(); ++i) {
 						if (orientations_match[i] == reverse_haplotype) anchors[haplotype_indices[i]] = false;
 					}
 
@@ -1145,7 +1145,7 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 
 					cerr << "Determine anchors for path " << cur_seq_idx << " in source file " << cur_source << endl;
 					vector<long long int> maxima(haplotype_indices.size());
-					for (long long int i = 0; i < haplotype_indices.size(); ++i) {
+					for (size_t i = 0; i < haplotype_indices.size(); ++i) {
 						// handle first element
 						if (i == 0) {
 							maxima[i] = haplotype_indices[i]; 
