@@ -1092,8 +1092,10 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 
 				if (is_target) {
 					// path sequence, with unique syncmers translated to reference indices
-					vector<long long int> haplotype_indices(reference_syncmers_to_index.size());
-					vector<bool> orientations_match(reference_syncmers_to_index.size());
+					vector<long long int> haplotype_indices;
+					haplotype_indices.reserve(reference_syncmers_to_index.size());
+					vector<bool> orientations_match;
+					orientations_match.reserve(reference_syncmers_to_index.size());
 					long long int same_orientation = 0;
 					long long int different_orientation = 0;
 					long long int candidates_read = 0;
@@ -1118,25 +1120,8 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 							different_orientation += 1;
 						}
 
-						if (candidates_read >= haplotype_indices.size()) {
-							// by definition, the number of candidates must be the same in all haplotypes.
-							cerr << "Haplotype contains unique syncmers more than once." << endl;
-							oneFileClose(ipath);
-							oneSchemaDestroy(schema);
-							return 1;
-						}
-
-						haplotype_indices[candidates_read] = info->index;
-						orientations_match[candidates_read] = (is_reversed == info->is_reverse);
-						candidates_read += 1;
-					}
-
-					if (candidates_read != reference_syncmers_to_index.size()) {
-						// there must have been candidate syncmers missing from haplotype
-						cerr << "Haplotype misses some unique synmcers." << endl;
-						oneFileClose(ipath);
-						oneSchemaDestroy(schema);
-						return 1;
+						haplotype_indices.push_back(info->index);
+						orientations_match.push_back(is_reversed == info->is_reverse);
 					}
 
 					// reverse the haplotype if orientations do not match and remove syncmers
@@ -1169,8 +1154,6 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 						}
 					}
 
-					// TODO: fix this: handle case where haplotype_indices has length 0.
-
 					if (haplotype_indices.size() > 0) {
 						long long int cur_idx = haplotype_indices.size() - 1;
 						long long int cur_min = haplotype_indices[cur_idx];
@@ -1184,9 +1167,6 @@ int compute_syncmer_anchors_from_paths (string& pathfile_path, string& syncmerse
 							cur_idx -= 1;
 						}
 					}
-
-					
-
 				}
 				break;
 			}

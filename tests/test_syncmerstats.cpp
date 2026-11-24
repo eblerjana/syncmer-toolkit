@@ -4,6 +4,7 @@
 #include "test_helpers.hpp"
 #include <map>
 #include <sstream>
+#include <iostream>
 
 using namespace std;
 
@@ -49,9 +50,21 @@ TEST_CASE("Test syncmerstats::get_max missing file.") {
 }
 
 
-TEST_CASE("Test syncmerstats::compute_syncmer_anchors_from_paths") {
+TEST_CASE("Test syncmerstats::compute_syncmer_anchors_from_paths ") {
 	string path = data_path("small.1path");
 	string subset = data_path("small_subset.tsv");
+
+	// easy example with two haplotypes
+	string path_example1 = data_path("anchors1.1path");
+	string subset_example1 = data_path("anchors1_subset.tsv");
+
+	// multiple haplotypes
+	string path_example2 = data_path("anchors2.1path");
+	string subset_example2 = data_path("anchors2_subset.tsv");
+
+	// reference path split to multiple contigs
+	string path_example3 = data_path("anchors3.1path");
+	string subset_example3 = data_path("anchors3_subset.tsv");
 
 	/* test if issues with missing input files are handled properly
 	 */
@@ -79,8 +92,57 @@ TEST_CASE("Test syncmerstats::compute_syncmer_anchors_from_paths") {
 		string out = output_path("output.tsv");
 		string reference = "seq.fa";
 		string non_existent_subset = "non-existent.tsv";
-		REQUIRE(compute_syncmer_anchors_from_paths(path, non_existent_subset, reference, out) == 1);
-	
+		REQUIRE(compute_syncmer_anchors_from_paths(path, non_existent_subset, reference, out) == 1);	
+	}
+
+	/*
+	 * test basic functionality of the anchors algorithm
+	 * */
+
+	SUBCASE("test anchors example 1") {
+		string out = output_path("anchors1.tsv");
+		string reference = "ref.fa";
+		REQUIRE(compute_syncmer_anchors_from_paths(path_example1, subset_example1, reference, out) == 0);
+		string expected_output = 
+			"syncmer_ID\treference_contig\treference_position\n"
+			"1\t1\t2\n"
+			"7\t1\t62\n"
+			"8\t1\t72\n"
+			"12\t1\t112\n";
+		REQUIRE(read_file(out) == expected_output);
+
+	}
+
+	SUBCASE("test anchors example 2") {
+		string out = output_path("anchors2.tsv");
+		string reference = "ref.fa";
+		REQUIRE(compute_syncmer_anchors_from_paths(path_example2, subset_example2, reference, out) == 0);
+		string expected_output = 
+			"syncmer_ID\treference_contig\treference_position\n"
+			"1\t1\t2\n"
+			"2\t1\t12\n"
+			"4\t1\t32\n"
+			"5\t1\t42\n"
+			"7\t1\t62\n"
+			"12\t1\t112\n";
+		REQUIRE(read_file(out) == expected_output);
+
+	}
+
+	SUBCASE("test anchors example 3") {
+		string out = output_path("anchors3.tsv");
+		string reference = "ref.fa";
+		REQUIRE(compute_syncmer_anchors_from_paths(path_example3, subset_example3, reference, out) == 0);
+		string expected_output = 
+			"syncmer_ID\treference_contig\treference_position\n"
+			"6\t1\t22\n"
+			"7\t1\t32\n";
+		cout << "computed:" << endl;
+		cout << read_file(out) << endl;
+		cout << "expected:" << endl;
+		cout << expected_output << endl;
+		REQUIRE(read_file(out) == expected_output);
+
 	}
 }
 
